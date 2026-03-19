@@ -1,0 +1,13 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import SubmissionEditForm from '../../../components/submission/SubmissionEditForm.svelte';
+
+const { id } = Astro.params;
+---
+
+<BaseLayout title="Edit Submission">
+  <div class="max-w-4xl mx-auto p-6">
+    <h1 class="text-3xl font-bold mb-6">Edit Submission</h1>
+    <SubmissionEditForm submissionId={id} client:only="svelte" />
+  </div>
+</BaseLayout>

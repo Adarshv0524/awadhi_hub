@@ -1,0 +1,73 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { api, ApiError } from "../lib/api";
+
+type Idiom = {
+  id: number;
+  text_devanagari: string;
+  text_roman: string;
+  meaning?: string;
+  version: number;
+};
+
+let idioms: Idiom[] = [];
+let error: string | null = null;
+
+try {
+  // After backend update: calling without 'q' returns all idioms
+  // Before backend update: will get 422, then you need to apply backend changes
+  idioms = await api<Idiom[]>("/idioms?limit=100");
+  console.log("[IDIOMS PAGE] Loaded idioms:", idioms.length);
+} catch (e) {
+  error = "Unable to load idioms.";
+  if (import.meta.env.DEV) console.error("idioms error:", e);
+}
+---
+
+<BaseLayout title="Idioms · Awadhi New">
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <div class="mb-8 text-center">
+      <h1 class="text-4xl font-bold mb-4 bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+        Idioms
+      </h1>
+      <p class="text-slate-400">Explore Awadhi idioms and expressions</p>
+      <p class="text-sm text-slate-500 mt-2">
+        Showing up to 100 entries. Use <a href="/search" class="text-indigo-400 hover:text-indigo-300 underline">search</a> for targeted queries.
+      </p>
+    </div>
+
+    {error && (
+      <div class="bg-red-900/20 border border-red-500/30 p-4 rounded-lg mb-6">
+        <p class="text-red-300">{error}</p>
+      </div>
+    )}
+
+    {!error && idioms.length > 0 && (
+      <div class="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
+        <ul class="space-y-4">
+          {idioms.map((idiom) => (
+            <li class="border-l-4 border-indigo-400 pl-4 hover:bg-slate-700/30 p-3 rounded transition-colors">
+              <a href={`/idioms/${idiom.id}`} class="text-indigo-300 hover:text-indigo-200 font-medium text-lg block mb-1">
+                {idiom.text_devanagari}
+              </a>
+              {idiom.text_roman && (
+                <p class="text-sm text-slate-500 italic">{idiom.text_roman}</p>
+              )}
+              {idiom.meaning && (
+                <p class="text-sm text-slate-400 mt-1">{idiom.meaning}</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    {!error && idioms.length === 0 && (
+      <div class="text-center py-12 bg-slate-800/50 rounded-lg border border-slate-700">
+        <p class="text-slate-400">No idioms found.</p>
+      </div>
+    )}
+  </div>
+</BaseLayout>

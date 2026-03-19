@@ -1,0 +1,63 @@
+---
+// src/pages/admin/index.astro
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import SystemStatus from "../../components/admin/SystemStatus.svelte";
+export const prerender = false;
+const API_BASE = import.meta.env.PUBLIC_API_BASE ?? "";
+---
+<AdminLayout title="Admin · Awadhi New">
+  <div class="mb-6">
+    <h1 class="text-2xl font-serif mb-2">Admin Console</h1>
+    <SystemStatus apiBase={API_BASE} client:load />
+  </div>
+
+  <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <div class="p-4 border rounded hover:border-blue-400 transition-colors">
+      <h2 class="font-semibold text-lg">Users</h2>
+      <p class="text-sm text-stone-600 mt-2">Manage user accounts, roles, and permissions. Change roles between registered, moderator, and admin. Activate or deactivate accounts.</p>
+      <div class="mt-4">
+        <a class="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors" href="/admin/users">Manage Users →</a>
+      </div>
+    </div>
+
+    <div class="p-4 border rounded hover:border-blue-400 transition-colors">
+      <h2 class="font-semibold text-lg">Hierarchy</h2>
+      <p class="text-sm text-stone-600 mt-2">Manage the classical content hierarchy: Authors → Works → Chapters. Create, edit, and organize the structure for classical submissions.</p>
+      <div class="mt-4">
+        <a class="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors" href="/admin/hierarchy">Manage Hierarchy →</a>
+      </div>
+    </div>
+
+    <div class="p-4 border rounded hover:border-blue-400 transition-colors">
+      <h2 class="font-semibold text-lg">Audit Logs</h2>
+      <p class="text-sm text-stone-600 mt-2">View comprehensive audit trail of all admin and moderator actions. Track user management, content moderation, and system changes.</p>
+      <div class="mt-4">
+        <a class="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors" href="/admin/audit">View Logs →</a>
+      </div>
+    </div>
+
+    <div class="p-4 border rounded hover:border-blue-400 transition-colors">
+      <h2 class="font-semibold text-lg">System Settings</h2>
+      <p class="text-sm text-stone-600 mt-2">Configure system-wide settings and preferences. Manage feature flags, rate limits, and application behavior.</p>
+      <div class="mt-4">
+        <a class="inline-block px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors" href="/admin/settings">View Settings →</a>
+      </div>
+    </div>
+
+    <div class="p-4 border rounded hover:border-blue-400 transition-colors">
+      <h2 class="font-semibold text-lg">Moderation Queue</h2>
+      <p class="text-sm text-stone-600 mt-2">Quick access to pending content submissions. Review, approve, or reject submissions from contributors.</p>
+      <div class="mt-4">
+        <a class="inline-block px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors" href="/moderation">Go to Queue →</a>
+      </div>
+    </div>
+
+    <div class="p-4 border rounded hover:border-blue-400 transition-colors">
+      <h2 class="font-semibold text-lg">Analytics</h2>
+      <p class="text-sm text-stone-600 mt-2">View platform statistics, content performance metrics, user engagement analytics, and growth trends across all content types.</p>
+      <div class="mt-4">
+        <a class="inline-block px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors" href="/admin/analytics">View Analytics →</a>
+      </div>
+    </div>
+  </div>
+</AdminLayout>

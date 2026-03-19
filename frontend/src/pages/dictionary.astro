@@ -1,0 +1,68 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { api, ApiError } from "../lib/api";
+
+type DictionaryEntry = {
+  id: number;
+  lemma_devanagari: string;
+  lemma_roman?: string;
+  language: string;
+  version: number;
+};
+
+let entries: DictionaryEntry[] = [];
+let error: string | null = null;
+
+try {
+  // After backend update: calling without 'q' returns all entries
+  // Before backend update: will get 422, then you need to apply backend changes
+  entries = await api<DictionaryEntry[]>("/dictionary?limit=100");
+  console.log("[DICTIONARY PAGE] Loaded entries:", entries.length);
+} catch (e) {
+  error = "Unable to load dictionary entries.";
+  if (import.meta.env.DEV) console.error("dictionary error:", e);
+}
+---
+
+<BaseLayout title="Dictionary · Awadhi New">
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <div class="mb-8 text-center">
+      <h1 class="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
+        Dictionary
+      </h1>
+      <p class="text-slate-400">Browse Awadhi words and their meanings</p>
+      <p class="text-sm text-slate-500 mt-2">
+        Showing up to 100 entries. Use <a href="/search" class="text-blue-400 hover:text-blue-300 underline">search</a> for targeted lookups.
+      </p>
+    </div>
+
+    {error && (
+      <div class="bg-red-900/20 border border-red-500/30 p-4 rounded-lg mb-6">
+        <p class="text-red-300">{error}</p>
+      </div>
+    )}
+
+    {!error && entries.length > 0 && (
+      <div class="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
+        <ul class="space-y-4">
+          {entries.map((item) => (
+            <li class="border-l-4 border-blue-400 pl-4 hover:bg-slate-700/30 p-3 rounded transition-colors">
+              <a href={`/dictionary/${item.id}`} class="text-blue-300 hover:text-blue-200 font-medium text-lg block mb-1">
+                {item.lemma_devanagari}
+              </a>
+              {item.lemma_roman && (
+                <p class="text-sm text-slate-500 italic">{item.lemma_roman}</p>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    {!error && entries.length === 0 && (
+      <div class="text-center py-12 bg-slate-800/50 rounded-lg border border-slate-700">
+        <p class="text-slate-400">No dictionary entries found.</p>
+      </div>
+    )}
+  </div>
+</BaseLayout>

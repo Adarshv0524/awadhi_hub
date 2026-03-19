@@ -1,0 +1,220 @@
+# app/api/v1/content.py
+
+from datetime import datetime
+from typing import Optional, List
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import and_
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.db.models import (
+    DohaEntry,
+    ContentVersion,
+    ClassicalAuthor,
+    ClassicalWork,
+    WorkChapter,
+    EngagementKPI,
+)
+
+router = APIRouter(prefix="/content", tags=["content"])
+
+
+class DohaOut(BaseModel):
+    id: int
+    hierarchy_path: Optional[str]
+    author_id: Optional[int]
+    author_name: Optional[str]
+    work_id: Optional[int]
+    work_name: Optional[str]
+    chapter_id: Optional[int]
+    chapter_name: Optional[str]
+    number_in_chapter: Optional[int]
+    main_text: str
+    meaning: Optional[str]
+    text_devanagari: Optional[str]
+    text_romanized: Optional[str]
+    status: str
+    visibility: str
+    version: int
+    is_canonical: bool
+    confidence_level: Optional[int]
+    source_reference: Optional[dict]
+    verified_by: Optional[int]
+    verified_at: Optional[datetime]
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    views_count: int = 0
+    likes_count: int = 0
+    shares_count: int = 0
+    bookmarks_count: int = 0
+    search_hits_count: int = 0
+
+    class Config:
+        orm_mode = True
+
+
+class ContentVersionOut(BaseModel):
+    id: int
+    content_type: str
+    content_id: int
+    version_number: int
+    main_text: Optional[str]
+    meaning: Optional[str]
+    text_devanagari: Optional[str]
+    text_romanized: Optional[str]
+    created_by: Optional[int]
+
+    class Config:
+        orm_mode = True
+
+
+def _doha_query_with_metadata(db: Session):
+    return (
+        db.query(
+            DohaEntry,
+            ClassicalAuthor.name.label("author_name"),
+            ClassicalWork.title.label("work_name"),
+            WorkChapter.title.label("chapter_name"),
+            EngagementKPI.views_count.label("views_count"),
+            EngagementKPI.likes_count.label("likes_count"),
+            EngagementKPI.shares_count.label("shares_count"),
+            EngagementKPI.bookmarks_count.label("bookmarks_count"),
+            EngagementKPI.search_hits_count.label("search_hits_count"),
+        )
+        .outerjoin(ClassicalAuthor, ClassicalAuthor.id == DohaEntry.author_id)
+        .outerjoin(ClassicalWork, ClassicalWork.id == DohaEntry.work_id)
+        .outerjoin(WorkChapter, WorkChapter.id == DohaEntry.chapter_id)
+        .outerjoin(
+            EngagementKPI,
+            and_(
+                EngagementKPI.content_type == "doha",
+                EngagementKPI.content_id == DohaEntry.id,
+            ),
+        )
+    )
+
+
+def _serialize_doha_with_metadata(row) -> dict:
+    (
+        doha,
+        author_name,
+        work_name,
+        chapter_name,
+        views_count,
+        likes_count,
+        shares_count,
+        bookmarks_count,
+        search_hits_count,
+    ) = row
+
+    return {
+        "id": doha.id,
+        "hierarchy_path": doha.hierarchy_path,
+        "author_id": doha.author_id,
+        "author_name": author_name,
+        "work_id": doha.work_id,
+        "work_name": work_name,
+        "chapter_id": doha.chapter_id,
+        "chapter_name": chapter_name,
+        "number_in_chapter": doha.number_in_chapter,
+        "main_text": doha.main_text,
+        "meaning": doha.meaning,
+        "text_devanagari": doha.text_devanagari,
+        "text_romanized": doha.text_romanized,
+        "status": doha.status,
+        "visibility": doha.visibility,
+        "version": doha.version,
+        "is_canonical": doha.is_canonical,
+        "confidence_level": doha.confidence_level,
+        "source_reference": doha.source_reference,
+        "verified_by": doha.verified_by,
+        "verified_at": doha.verified_at,
+        "created_at": doha.created_at,
+        "updated_at": doha.updated_at,
+        "views_count": views_count or 0,
+        "likes_count": likes_count or 0,
+        "shares_count": shares_count or 0,
+        "bookmarks_count": bookmarks_count or 0,
+        "search_hits_count": search_hits_count or 0,
+    }
+
+
+
+@router.get("/doha", response_model=List[DohaOut])
+def list_dohas(
+    db: Session = Depends(get_db),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    visibility: Optional[str] = Query(None),
+):
+    """
+    List canonical doha entries (for now mostly for debugging / browsing).
+    """
+    q = _doha_query_with_metadata(db).filter(
+        DohaEntry.is_deleted == False,
+        DohaEntry.status == "active",
+    )
+    if visibility:
+        q = q.filter(DohaEntry.visibility == visibility)
+
+    rows = q.order_by(DohaEntry.created_at.asc()).offset(offset).limit(limit).all()
+    return [_serialize_doha_with_metadata(row) for row in rows]
+
+
+@router.get("/doha/{doha_id}", response_model=DohaOut)
+def get_doha(doha_id: int, db: Session = Depends(get_db)):
+    row = (
+        _doha_query_with_metadata(db)
+        .filter(
+            DohaEntry.id == doha_id,
+            DohaEntry.is_deleted == False,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Doha not found")
+
+    doha = row[0]
+    if doha.status != "active":
+        raise HTTPException(status_code=404, detail="Doha not found")
+    return _serialize_doha_with_metadata(row)
+
+
+@router.get("/doha/{doha_id}/history", response_model=List[ContentVersionOut])
+def get_doha_history(doha_id: int, db: Session = Depends(get_db)):
+    # Optional: ensure doha exists first
+    doha = db.query(DohaEntry).filter(DohaEntry.id == doha_id, DohaEntry.is_deleted == False).first()
+    if not doha:
+        raise HTTPException(status_code=404, detail="Doha not found")
+
+    versions = (
+        db.query(ContentVersion)
+        .filter(
+            ContentVersion.content_type == "doha",
+            ContentVersion.content_id == doha_id,
+        )
+        .order_by(ContentVersion.version_number.asc())
+        .all()
+    )
+    return versions
+
+
+@router.get("/by-path/{hierarchy_path:path}", response_model=DohaOut)
+def get_doha_by_path(hierarchy_path: str, db: Session = Depends(get_db)):
+    row = (
+        _doha_query_with_metadata(db)
+        .filter(
+            DohaEntry.hierarchy_path == hierarchy_path,
+            DohaEntry.is_deleted == False,
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Doha not found for this path")
+
+    doha = row[0]
+    if doha.status != "active":
+        raise HTTPException(status_code=404, detail="Doha not found for this path")
+    return _serialize_doha_with_metadata(row)

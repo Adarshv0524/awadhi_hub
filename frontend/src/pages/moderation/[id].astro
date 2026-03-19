@@ -1,0 +1,17 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ModerationDetail from "../../components/moderation/ModerationDetail.svelte";
+
+export const prerender = false;
+
+const submissionId = Number(Astro.params.id);
+---
+
+<BaseLayout title={`Moderation · ${submissionId}`}>
+  <head>
+    <meta name="robots" content="noindex,nofollow" />
+  </head>
+  <div class="max-w-4xl mx-auto py-6">
+    <ModerationDetail submissionId={submissionId} client:load />
+  </div>
+</BaseLayout>

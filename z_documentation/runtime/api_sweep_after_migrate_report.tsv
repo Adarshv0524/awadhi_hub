@@ -1,0 +1,68 @@
+status	method	path	auth_used	url	response_snippet
+200	POST	/auth/register	False	http://127.0.0.1:8000/auth/register	{"id":1,"email":"copilot_1773859901@example.com","username":"copilot_1773859901"}
+200	POST	/auth/login	False	http://127.0.0.1:8000/auth/login	{"access_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzczODYwODAyLCJ0eXBlIjoiYWNjZXNzIn0.rEQYEwugHWL6u9G3NipokxeWiJswJSB0kdCcX3RDEx4","refresh_to
+401	GET	/admin/audit_logs	False	http://127.0.0.1:8000/admin/audit_logs	{"detail":"Missing credentials"}
+401	GET	/admin/audit_logs/export/csv	False	http://127.0.0.1:8000/admin/audit_logs/export/csv	{"detail":"Missing credentials"}
+401	GET	/admin/audit_logs/{id}	False	http://127.0.0.1:8000/admin/audit_logs/1	{"detail":"Missing credentials"}
+401	POST	/admin/hierarchy/authors	False	http://127.0.0.1:8000/admin/hierarchy/authors	{"detail":"Missing credentials"}
+401	PATCH	/admin/hierarchy/authors/{author_id}	False	http://127.0.0.1:8000/admin/hierarchy/authors/1	{"detail":"Missing credentials"}
+401	POST	/admin/hierarchy/authors/{author_id}/works	False	http://127.0.0.1:8000/admin/hierarchy/authors/1/works	{"detail":"Missing credentials"}
+401	PATCH	/admin/hierarchy/chapters/{chapter_id}	False	http://127.0.0.1:8000/admin/hierarchy/chapters/1	{"detail":"Missing credentials"}
+401	PATCH	/admin/hierarchy/works/{work_id}	False	http://127.0.0.1:8000/admin/hierarchy/works/1	{"detail":"Missing credentials"}
+401	POST	/admin/hierarchy/works/{work_id}/chapters	False	http://127.0.0.1:8000/admin/hierarchy/works/1/chapters	{"detail":"Missing credentials"}
+401	GET	/admin/system_settings	False	http://127.0.0.1:8000/admin/system_settings	{"detail":"Missing credentials"}
+401	GET	/admin/system_settings/{key}	False	http://127.0.0.1:8000/admin/system_settings/sample_key	{"detail":"Missing credentials"}
+401	PUT	/admin/system_settings/{key}	False	http://127.0.0.1:8000/admin/system_settings/sample_key	{"detail":"Missing credentials"}
+401	DELETE	/admin/system_settings/{key}	False	http://127.0.0.1:8000/admin/system_settings/sample_key	{"detail":"Missing credentials"}
+401	GET	/admin/users	False	http://127.0.0.1:8000/admin/users	{"detail":"Missing credentials"}
+401	POST	/admin/users	False	http://127.0.0.1:8000/admin/users	{"detail":"Missing credentials"}
+401	GET	/admin/users/{user_id}	False	http://127.0.0.1:8000/admin/users/1	{"detail":"Missing credentials"}
+401	PATCH	/admin/users/{user_id}	False	http://127.0.0.1:8000/admin/users/1	{"detail":"Missing credentials"}
+401	GET	/analytics/demand	False	http://127.0.0.1:8000/analytics/demand	{"detail":"Missing credentials"}
+401	GET	/analytics/growth	False	http://127.0.0.1:8000/analytics/growth	{"detail":"Missing credentials"}
+401	GET	/analytics/top	False	http://127.0.0.1:8000/analytics/top	{"detail":"Missing credentials"}
+200	GET	/articles	False	http://127.0.0.1:8000/articles	[]
+200	GET	/articles/by-tag/{tag}	False	http://127.0.0.1:8000/articles/by-tag/sample	[]
+200	GET	/articles/recent/list	False	http://127.0.0.1:8000/articles/recent/list	[]
+200	GET	/articles/search/advanced	False	http://127.0.0.1:8000/articles/search/advanced	[]
+200	GET	/articles/stats	False	http://127.0.0.1:8000/articles/stats	{"total_articles":0,"by_tag":{},"recent_count":0}
+200	GET	/articles/tags/list	False	http://127.0.0.1:8000/articles/tags/list	{"tags":[]}
+404	GET	/articles/{article_id}	False	http://127.0.0.1:8000/articles/1	{"detail":"Article not found"}
+500	POST	/auth/login	False	http://127.0.0.1:8000/auth/login	Traceback (most recent call last):   File "/home/veerbhadra/Main/PRJ2/awadhi_new/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1967, in _exe
+200	POST	/auth/logout	False	http://127.0.0.1:8000/auth/logout	{"ok":true}
+401	GET	/auth/me	False	http://127.0.0.1:8000/auth/me	{"detail":"Missing credentials"}
+400	GET	/auth/oauth/google/callback	False	http://127.0.0.1:8000/auth/oauth/google/callback	{"detail":"Missing code"}
+401	POST	/auth/refresh	False	http://127.0.0.1:8000/auth/refresh	{"detail":"Refresh token revoked"}
+400	POST	/auth/register	False	http://127.0.0.1:8000/auth/register	{"detail":"Email already registered"}
+200	GET	/authors	False	http://127.0.0.1:8000/authors	[]
+404	GET	/authors/{author_slug}	False	http://127.0.0.1:8000/authors/sample	{"detail":"Author not found"}
+404	GET	/authors/{author_slug}/works	False	http://127.0.0.1:8000/authors/sample/works	{"detail":"Author not found"}
+404	GET	/authors/{author_slug}/works/{work_slug}	False	http://127.0.0.1:8000/authors/sample/works/sample	{"detail":"Author not found"}
+404	GET	/authors/{author_slug}/works/{work_slug}/chapters	False	http://127.0.0.1:8000/authors/sample/works/sample/chapters	{"detail":"Author not found"}
+404	GET	/content/by-path/{hierarchy_path}	False	http://127.0.0.1:8000/content/by-path/sample	{"detail":"Doha not found for this path"}
+200	GET	/content/doha	False	http://127.0.0.1:8000/content/doha	[]
+404	GET	/content/doha/{doha_id}	False	http://127.0.0.1:8000/content/doha/1	{"detail":"Doha not found"}
+404	GET	/content/doha/{doha_id}/history	False	http://127.0.0.1:8000/content/doha/1/history	{"detail":"Doha not found"}
+200	GET	/dictionary	False	http://127.0.0.1:8000/dictionary	[]
+404	GET	/dictionary/{entry_id}	False	http://127.0.0.1:8000/dictionary/1	{"detail":"Dictionary entry not found"}
+200	GET	/health	False	http://127.0.0.1:8000/health	{"status":"ok"}
+200	GET	/idioms	False	http://127.0.0.1:8000/idioms	[]
+404	GET	/idioms/{idiom_id}	False	http://127.0.0.1:8000/idioms/1	{"detail":"Idiom not found"}
+401	POST	/interactions/report	False	http://127.0.0.1:8000/interactions/report	{"detail":"Missing credentials"}
+401	POST	/interactions/share	False	http://127.0.0.1:8000/interactions/share	{"detail":"Missing credentials"}
+401	POST	/interactions/toggle	False	http://127.0.0.1:8000/interactions/toggle	{"detail":"Missing credentials"}
+401	GET	/interactions/users/{user_id}/bookmarks	False	http://127.0.0.1:8000/interactions/users/1/bookmarks	{"detail":"Missing credentials"}
+401	POST	/moderation/batch	False	http://127.0.0.1:8000/moderation/batch	{"detail":"Missing credentials"}
+401	POST	/moderation/batch_approve	False	http://127.0.0.1:8000/moderation/batch_approve	{"detail":"Missing credentials"}
+401	GET	/moderation/submissions	False	http://127.0.0.1:8000/moderation/submissions	{"detail":"Missing credentials"}
+401	GET	/moderation/submissions/{submission_id}	False	http://127.0.0.1:8000/moderation/submissions/1	{"detail":"Missing credentials"}
+401	POST	/moderation/submissions/{submission_id}/approve	False	http://127.0.0.1:8000/moderation/submissions/1/approve	{"detail":"Missing credentials"}
+401	POST	/moderation/submissions/{submission_id}/reject	False	http://127.0.0.1:8000/moderation/submissions/1/reject	{"detail":"Missing credentials"}
+500	GET	/recommendations/{content_type}/{content_id}	False	http://127.0.0.1:8000/recommendations/doha/1	Traceback (most recent call last):   File "/home/veerbhadra/Main/PRJ2/awadhi_new/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1967, in _exe
+200	GET	/search	False	http://127.0.0.1:8000/search	{"total":0,"results":[]}
+401	POST	/submissions	False	http://127.0.0.1:8000/submissions	{"detail":"Missing credentials"}
+401	GET	/submissions/me	False	http://127.0.0.1:8000/submissions/me	{"detail":"Missing credentials"}
+401	GET	/submissions/{submission_id}	False	http://127.0.0.1:8000/submissions/1	{"detail":"Missing credentials"}
+401	PUT	/submissions/{submission_id}	False	http://127.0.0.1:8000/submissions/1	{"detail":"Missing credentials"}
+401	DELETE	/submissions/{submission_id}	False	http://127.0.0.1:8000/submissions/1	{"detail":"Missing credentials"}
+404	GET	/users/{username}	False	http://127.0.0.1:8000/users/sample	{"detail":"User not found"}

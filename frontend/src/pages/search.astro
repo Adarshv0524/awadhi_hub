@@ -1,0 +1,385 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { api } from "../lib/api";
+
+const url = new URL(Astro.request.url);
+const q = url.searchParams.get("q");
+const contentFilter = url.searchParams.get("type") || "all";
+const sortBy = url.searchParams.get("sort") || "relevance";
+const authorFilter = url.searchParams.get("author") || "";
+const workFilter = url.searchParams.get("work") || "";
+
+let dohas = [];
+let dictionary = [];
+let idioms = [];
+let articles = [];
+let errors = [];
+
+if (q) {
+  console.log("[SEARCH SSR] Query:", q);
+
+  // Build search URLs with all filters
+  const buildSearchUrl = (endpoint: string) => {
+    const params = new URLSearchParams();
+    params.set("q", q);
+    if (authorFilter) params.set("author", authorFilter);
+    if (workFilter) params.set("work", workFilter);
+    if (sortBy !== "relevance") params.set("sort", sortBy);
+    params.set("limit", "20");
+    return `${endpoint}?${params.toString()}`;
+  };
+
+  // Execute all searches in parallel for better performance
+  const [dohaRes, dictRes, idiomRes, articleRes] = await Promise.allSettled([
+    api(buildSearchUrl("/search")),
+    api(`/dictionary?q=${encodeURIComponent(q)}&limit=20`),
+    api(`/idioms?q=${encodeURIComponent(q)}&limit=20`),
+    api(`/articles?q=${encodeURIComponent(q)}&limit=20`)
+  ]);
+
+  // Process doha results (returns {results: [...]} wrapper)
+  if (dohaRes.status === 'fulfilled') {
+    dohas = dohaRes.value?.results ?? dohaRes.value ?? [];
+    console.log("[SEARCH SSR] Doha results:", dohas.length, dohas);
+  } else {
+    console.error("[SEARCH SSR] Doha search failed", dohaRes.reason);
+    errors.push("Doha search failed");
+  }
+
+  // Process dictionary results (returns flat array)
+  if (dictRes.status === 'fulfilled') {
+    dictionary = Array.isArray(dictRes.value) ? dictRes.value : [];
+    console.log("[SEARCH SSR] Dictionary results:", dictionary.length, dictionary);
+  } else {
+    console.error("[SEARCH SSR] Dictionary search failed", dictRes.reason);
+    errors.push("Dictionary search failed");
+  }
+
+  // Process idiom results (returns flat array)
+  if (idiomRes.status === 'fulfilled') {
+    idioms = Array.isArray(idiomRes.value) ? idiomRes.value : [];
+    console.log("[SEARCH SSR] Idiom results:", idioms.length, idioms);
+  } else {
+    console.error("[SEARCH SSR] Idiom search failed", idiomRes.reason);
+    errors.push("Idiom search failed");
+  }
+
+  // Process article results (returns flat array)
+  if (articleRes.status === 'fulfilled') {
+    articles = Array.isArray(articleRes.value) ? articleRes.value : [];
+    console.log("[SEARCH SSR] Article results:", articles.length, articles);
+  } else {
+    console.error("[SEARCH SSR] Article search failed", articleRes.reason);
+    errors.push("Article search failed");
+  }
+}
+
+const totalResults = dohas.length + dictionary.length + idioms.length + articles.length;
+---
+
+<BaseLayout title={q ? `Search: ${q}` : "Search"}>
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <h1 class="text-3xl md:text-4xl font-serif font-bold mb-8 text-center bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent">
+      Search Awadhi Corpus
+    </h1>
+
+    <form method="get" action="/search" class="mb-10">
+      <div class="flex gap-3 mb-4">
+        <input
+          name="q"
+          value={q ?? ""}
+          placeholder="Search across Doha, Dictionary, Idioms, and Articles..."
+          class="flex-1 bg-slate-800 border border-slate-600 text-slate-200 px-4 py-3 rounded-lg focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/50 transition-all"
+          required
+        />
+        <button class="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white font-semibold rounded-lg shadow-lg transition-all">
+          Search
+        </button>
+      </div>
+
+      <!-- Advanced filters: Author & Work (for Doha) -->
+      {q && (
+        <div class="grid sm:grid-cols-2 gap-3 mb-4">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1.5">Filter by Author (optional)</label>
+            <input
+              type="text"
+              name="author"
+              value={authorFilter}
+              placeholder="e.g., kabir, tulsidas"
+              class="w-full bg-slate-800 border border-slate-600 text-slate-200 px-3 py-2 text-sm rounded-lg focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400/50 transition-all"
+            />
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1.5">Filter by Work (optional)</label>
+            <input
+              type="text"
+              name="work"
+              value={workFilter}
+              placeholder="e.g., ramcharitmanas"
+              class="w-full bg-slate-800 border border-slate-600 text-slate-200 px-3 py-2 text-sm rounded-lg focus:border-cyan-400 focus:outline-none focus:ring-1 focus:ring-cyan-400/50 transition-all"
+            />
+          </div>
+        </div>
+      )}
+      
+      {q && (
+        <div class="flex flex-wrap items-center gap-3">
+          <span class="text-sm text-slate-400">Filter:</span>
+          <input type="hidden" name="q" value={q} />
+          {authorFilter && <input type="hidden" name="author" value={authorFilter} />}
+          {workFilter && <input type="hidden" name="work" value={workFilter} />}
+          
+          <!-- Active filter chips with remove option -->
+          {authorFilter && (
+            <div class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full bg-cyan-900/50 text-cyan-300 border border-cyan-700">
+              <span>Author: {authorFilter}</span>
+              <a href={`/search?q=${q}${workFilter ? `&work=${workFilter}` : ''}${contentFilter !== 'all' ? `&type=${contentFilter}` : ''}${sortBy !== 'relevance' ? `&sort=${sortBy}` : ''}`} 
+                 class="text-cyan-400 hover:text-cyan-200 ml-1"
+                 aria-label="Remove author filter">×</a>
+            </div>
+          )}
+          {workFilter && (
+            <div class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full bg-blue-900/50 text-blue-300 border border-blue-700">
+              <span>Work: {workFilter}</span>
+              <a href={`/search?q=${q}${authorFilter ? `&author=${authorFilter}` : ''}${contentFilter !== 'all' ? `&type=${contentFilter}` : ''}${sortBy !== 'relevance' ? `&sort=${sortBy}` : ''}`}
+                 class="text-blue-400 hover:text-blue-200 ml-1"
+                 aria-label="Remove work filter">×</a>
+            </div>
+          )}
+          
+          <button 
+            type="submit" 
+            name="type" 
+            value="all"
+            class:list={[
+              "px-3 py-1.5 text-sm rounded-full transition-all",
+              contentFilter === "all" 
+                ? "bg-cyan-600 text-white" 
+                : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+            ]}
+          >All</button>
+          <button 
+            type="submit" 
+            name="type" 
+            value="doha"
+            class:list={[
+              "px-3 py-1.5 text-sm rounded-full transition-all",
+              contentFilter === "doha" 
+                ? "bg-cyan-600 text-white" 
+                : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+            ]}
+          >Doha</button>
+          <button 
+            type="submit" 
+            name="type" 
+            value="dictionary"
+            class:list={[
+              "px-3 py-1.5 text-sm rounded-full transition-all",
+              contentFilter === "dictionary" 
+                ? "bg-blue-600 text-white" 
+                : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+            ]}
+          >Dictionary</button>
+          <button 
+            type="submit" 
+            name="type" 
+            value="idiom"
+            class:list={[
+              "px-3 py-1.5 text-sm rounded-full transition-all",
+              contentFilter === "idiom" 
+                ? "bg-indigo-600 text-white" 
+                : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+            ]}
+          >Idioms</button>
+          <button 
+            type="submit" 
+            name="type" 
+            value="article"
+            class:list={[
+              "px-3 py-1.5 text-sm rounded-full transition-all",
+              contentFilter === "article" 
+                ? "bg-purple-600 text-white" 
+                : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+            ]}
+          >Articles</button>
+          
+          <span class="ml-4 text-sm text-slate-400">Sort:</span>
+          <button 
+            type="submit" 
+            name="sort" 
+            value="relevance"
+            class:list={[
+              "px-3 py-1.5 text-sm rounded-full transition-all",
+              sortBy === "relevance" 
+                ? "bg-blue-600 text-white" 
+                : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+            ]}
+          >Relevance</button>
+          <button 
+            type="submit" 
+            name="sort" 
+            value="recent"
+            class:list={[
+              "px-3 py-1.5 text-sm rounded-full transition-all",
+              sortBy === "recent" 
+                ? "bg-blue-600 text-white" 
+                : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+            ]}
+          >Recent</button>
+        </div>
+      )}
+    </form>
+
+    {!q && (
+      <div class="text-center py-12 bg-slate-800/30 rounded-lg border border-slate-700">
+        <div class="text-4xl mb-4">🔍</div>
+        <p class="text-slate-400 text-lg mb-2">
+          Enter a query to search across all content types
+        </p>
+        <p class="text-sm text-slate-500 mb-6">
+          Try searching by <strong class="text-cyan-400">keyword</strong>, <strong class="text-blue-400">author</strong>, <strong class="text-indigo-400">work</strong>, or <strong class="text-purple-400">phrase</strong>
+        </p>
+        
+        <!-- Search tips -->
+        <div class="max-w-2xl mx-auto mb-6 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+          <h3 class="text-sm font-semibold text-slate-300 mb-3">Search Tips:</h3>
+          <ul class="text-xs text-slate-400 space-y-2 text-left">
+            <li class="flex items-start gap-2">
+              <span class="text-cyan-400 mt-0.5">•</span>
+              <span>Use <strong class="text-slate-300">author filter</strong> to find content by specific authors (e.g., kabir, tulsidas)</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-blue-400 mt-0.5">•</span>
+              <span>Use <strong class="text-slate-300">work filter</strong> to search within specific literary works</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-indigo-400 mt-0.5">•</span>
+              <span>Filter by <strong class="text-slate-300">content type</strong> to narrow results to Doha, Dictionary, Idioms, or Articles</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-purple-400 mt-0.5">•</span>
+              <span>Sort by <strong class="text-slate-300">relevance</strong> (default) or <strong class="text-slate-300">recent</strong></span>
+            </li>
+          </ul>
+        </div>
+        
+        <div class="mt-6 flex flex-wrap justify-center gap-3">
+          <span class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-full text-sm text-slate-300 flex items-center gap-2">
+            <span class="w-2 h-2 bg-cyan-500 rounded-full"></span> Doha
+          </span>
+          <span class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-full text-sm text-slate-300 flex items-center gap-2">
+            <span class="w-2 h-2 bg-blue-500 rounded-full"></span> Dictionary
+          </span>
+          <span class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-full text-sm text-slate-300 flex items-center gap-2">
+            <span class="w-2 h-2 bg-indigo-500 rounded-full"></span> Idioms
+          </span>
+          <span class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-full text-sm text-slate-300 flex items-center gap-2">
+            <span class="w-2 h-2 bg-purple-500 rounded-full"></span> Articles
+          </span>
+        </div>
+      </div>
+    )}
+
+    {q && (
+      <div class="space-y-8">
+        <!-- Search summary -->
+        <div class="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+          <p class="text-slate-300">
+            Found <strong class="text-cyan-400">{totalResults}</strong> result{totalResults !== 1 ? 's' : ''} for <strong class="text-blue-400">"{q}"</strong>
+          </p>
+          {errors.length > 0 && (
+            <p class="text-sm text-orange-400 mt-2">
+              Some searches failed: {errors.join(", ")}
+            </p>
+          )}
+        </div>
+
+        {dohas.length > 0 && (
+          <section class="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
+            <h2 class="text-xl font-bold mb-4 bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
+              Doha ({dohas.length})
+            </h2>
+            <ul class="space-y-4">
+              {dohas.map((d: any) => (
+                <li class="border-l-4 border-cyan-400 pl-4 hover:bg-slate-700/30 p-3 rounded transition-colors">
+                  <a href={`/doha/${d.id}`} class="text-cyan-300 hover:text-cyan-200 font-medium block mb-1">
+                    {d.main_text}
+                  </a>
+                  <p class="text-sm text-slate-400">{d.meaning}</p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {dictionary.length > 0 && (
+          <section class="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
+            <h2 class="text-xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
+              Dictionary ({dictionary.length})
+            </h2>
+            <ul class="space-y-4">
+              {dictionary.map((w: any) => (
+                <li class="border-l-4 border-blue-400 pl-4 hover:bg-slate-700/30 p-3 rounded transition-colors">
+                  <a href={`/dictionary/${w.id}`} class="text-blue-300 hover:text-blue-200 font-medium block mb-1">
+                    {w.lemma_devanagari}
+                  </a>
+                  {w.lemma_roman && <p class="text-sm text-slate-500 italic">{w.lemma_roman}</p>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {idioms.length > 0 && (
+          <section class="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
+            <h2 class="text-xl font-bold mb-4 bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+              Idioms ({idioms.length})
+            </h2>
+            <ul class="space-y-4">
+              {idioms.map((i: any) => (
+                <li class="border-l-4 border-indigo-400 pl-4 hover:bg-slate-700/30 p-3 rounded transition-colors">
+                  <a href={`/idioms/${i.id}`} class="text-indigo-300 hover:text-indigo-200 font-medium block mb-1">
+                    {i.text_devanagari ?? i.text}
+                  </a>
+                  {i.meaning && <p class="text-sm text-slate-400">{i.meaning.slice(0, 100)}{i.meaning.length > 100 ? '...' : ''}</p>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {articles.length > 0 && (
+          <section class="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
+            <h2 class="text-xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+              Articles ({articles.length})
+            </h2>
+            <ul class="space-y-4">
+              {articles.map((a: any) => (
+                <li class="border-l-4 border-purple-400 pl-4 hover:bg-slate-700/30 p-3 rounded transition-colors">
+                  <a href={`/articles/${a.id}`} class="text-purple-300 hover:text-purple-200 font-medium block mb-1">
+                    {a.title}
+                  </a>
+                  {a.excerpt && <p class="text-sm text-slate-400">{a.excerpt.slice(0, 150)}{a.excerpt.length > 150 ? '...' : ''}</p>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {totalResults === 0 && (
+          <div class="text-center py-12 bg-slate-800/50 rounded-lg border border-slate-700">
+            <p class="text-slate-400 text-lg mb-2">
+              No results found for <strong class="text-cyan-400">"{q}"</strong>
+            </p>
+            <p class="text-sm text-slate-500">
+              Try different keywords or check your spelling
+            </p>
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+</BaseLayout>

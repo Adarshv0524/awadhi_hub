@@ -1,0 +1,11 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ProfileEditor from "../../components/user/ProfileEditor.svelte";
+export const prerender = false;
+---
+<BaseLayout title="Edit profile · Awadhi New" noindex>
+  <div class="min-h-screen bg-slate-900 py-8">
+    <h1 class="text-3xl font-serif font-bold mb-8 bg-gradient-to-r from-purple-400 via-pink-400 to-rose-400 bg-clip-text text-transparent">Edit profile</h1>
+    <ProfileEditor client:load />
+  </div>
+</BaseLayout>

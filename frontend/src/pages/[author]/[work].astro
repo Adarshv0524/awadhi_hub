@@ -1,0 +1,69 @@
+---
+export const prerender = false;
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { api } from "../../lib/api";
+import Breadcrumbs from "../../components/content/Breadcrumbs.svelte";
+
+const { author, work } = Astro.params;
+
+const safeDecode = (s: any) => {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+};
+
+const authorSlug = encodeURIComponent(String(author ?? ""));
+const workSlug = encodeURIComponent(String(work ?? ""));
+
+let chapters = [];
+try {
+  chapters = await api(`/authors/${authorSlug}/works/${workSlug}/chapters`);
+} catch {
+  chapters = [];
+}
+---
+
+<BaseLayout title={`${safeDecode(work)} · Awadhi New`}>
+  <div class="mb-5">
+    <Breadcrumbs path={`${author}/${work}`} client:load />
+  </div>
+
+  <section class="rounded-2xl border border-slate-700 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-6 py-7 mb-7">
+    <p class="text-xs uppercase tracking-[0.2em] text-slate-400 mb-2">Work</p>
+    <h1 class="text-3xl font-serif font-bold text-slate-100 mb-2">
+      {safeDecode(work).replace(/-/g, " ")}
+    </h1>
+    <p class="text-slate-300 text-sm">Browse all available chapters in this work.</p>
+  </section>
+
+  {
+    chapters.length === 0
+      ? (
+        <div class="rounded-xl border border-slate-700 bg-slate-900/50 p-5">
+          <p class="text-slate-300">
+            No chapters are available for this work yet.
+          </p>
+          <a href={`/${authorSlug}`} class="inline-flex items-center text-cyan-300 hover:text-cyan-200 mt-3">
+            ← Back to author
+          </a>
+        </div>
+      )
+      : (
+        <ul class="grid gap-3 sm:grid-cols-2">
+          {(chapters as any[]).map((c) => (
+            <li class="rounded-xl border border-slate-700 bg-slate-900/45 p-4 transition-colors hover:border-cyan-400/40 hover:bg-slate-800/55">
+              <a
+                href={`/${authorSlug}/${workSlug}/${encodeURIComponent(c.slug)}`}
+                class="font-medium text-slate-100 hover:text-cyan-300"
+              >
+                {c.title || c.slug}
+              </a>
+              <p class="text-xs uppercase tracking-[0.16em] text-slate-400 mt-2">Chapter</p>
+            </li>
+          ))}
+        </ul>
+      )
+  }
+</BaseLayout>

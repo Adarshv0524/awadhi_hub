@@ -1,0 +1,92 @@
+---
+// Demo page to test error handling - DEVELOPMENT ONLY
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+export const prerender = false;
+
+// Only allow in development
+if (!import.meta.env.DEV) {
+  return Astro.redirect("/");
+}
+---
+
+<BaseLayout title="Error Handling Demo · Dev Only" noindex>
+  <div class="max-w-4xl mx-auto">
+    <h1 class="text-3xl font-bold mb-6 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+      Error Handling Demo
+    </h1>
+    
+    <div class="space-y-6">
+      <!-- Error Pages -->
+      <section class="p-6 bg-slate-800 border border-slate-700 rounded-lg">
+        <h2 class="text-xl font-semibold text-cyan-400 mb-4">Error Pages</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <a href="/404" class="px-4 py-3 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 rounded text-center transition-colors">
+            404 - Not Found
+          </a>
+          <a href="/403" class="px-4 py-3 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 rounded text-center transition-colors">
+            403 - Access Denied
+          </a>
+          <a href="/500" class="px-4 py-3 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 rounded text-center transition-colors">
+            500 - Server Error
+          </a>
+        </div>
+      </section>
+
+      <!-- Component Demos -->
+      <section class="p-6 bg-slate-800 border border-slate-700 rounded-lg">
+        <h2 class="text-xl font-semibold text-indigo-400 mb-4">Error Components</h2>
+        <div id="demo-container"></div>
+      </section>
+
+      <!-- Documentation -->
+      <section class="p-6 bg-slate-800 border border-slate-700 rounded-lg">
+        <h2 class="text-xl font-semibold text-pink-400 mb-4">Documentation</h2>
+        <p class="text-slate-400 mb-4">
+          See <code class="px-2 py-1 bg-slate-900 rounded text-pink-300">ERROR_HANDLING_GUIDE.md</code> for complete documentation.
+        </p>
+        <ul class="list-disc list-inside space-y-2 text-slate-400">
+          <li>ErrorBoundary - Global error catching (auto-integrated)</li>
+          <li>RateLimitFeedback - Rate limit toast notifications</li>
+          <li>ErrorDisplay - Inline error messages</li>
+          <li>errorHandler.ts - Utility functions for error parsing</li>
+        </ul>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    import ErrorDisplay from "../../components/ErrorDisplay.svelte";
+    import RateLimitFeedback from "../../components/RateLimitFeedback.svelte";
+
+    // Demo: ErrorDisplay
+    const container = document.getElementById("demo-container");
+    if (container) {
+      const errorDisplay = new ErrorDisplay({
+        target: container,
+        props: {
+          error: "This is a demo error message",
+          type: "error",
+          title: "Demo Error",
+          dismissible: true,
+          action: {
+            label: "Retry",
+            onClick: () => alert("Retry clicked!")
+          }
+        }
+      });
+
+      // Demo: Rate Limit Feedback
+      setTimeout(() => {
+        const rateLimitDemo = new RateLimitFeedback({
+          target: document.body,
+          props: {
+            show: true,
+            retryAfter: 10,
+            message: "Demo rate limit - wait 10 seconds"
+          }
+        });
+      }, 2000);
+    }
+  </script>
+</BaseLayout>

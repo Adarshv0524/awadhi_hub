@@ -1,0 +1,13 @@
+---
+// src/pages/dashboard/index.astro
+export const prerender = false;
+
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import DashboardClient from "../../components/dashboard/DashboardClient.svelte";
+---
+
+<BaseLayout title="Dashboard · Awadhi New" noindex>
+  <div class="min-h-screen bg-slate-900 py-8">
+    <DashboardClient client:only="svelte" />
+  </div>
+</BaseLayout>

@@ -1,0 +1,133 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { api, ApiError } from "../../lib/api";
+import Recommendations from "../../components/recommendations/Recommendations.svelte";
+import InteractionBar from "../../components/interaction/InteractionBar.svelte";
+import CopyButton from "../../components/content/CopyButton.svelte";
+import StructuredData from "../../components/StructuredData.astro";
+import TrustSignals from "../../components/content/TrustSignals.svelte";
+import ModerationInfo from "../../components/content/ModerationInfo.svelte";
+
+const { id } = Astro.params;
+
+let entry: any = null;
+
+try {
+  entry = await api(`/dictionary/${id}`);
+} catch (e) {
+  if (e instanceof ApiError && e.status === 404) {
+    return Astro.redirect("/404");
+  }
+  if (import.meta.env.DEV) {
+    console.error("[Dictionary Detail] Error:", e);
+  }
+  throw e;
+}
+
+const title = `${entry.lemma_devanagari} — Awadhi Dictionary`;
+const description =
+  entry.meaning
+    ? entry.meaning.slice(0, 160)
+    : `Meaning and usage of ${entry.lemma_devanagari}`;
+
+const baseUrl = import.meta.env.SITE || "https://awadhi.new";
+const entryUrl = `${baseUrl}/dictionary/${id}`;
+---
+
+<BaseLayout title={title}>
+  <head>
+    <link rel="canonical" href={entryUrl} />
+    <meta name="description" content={description} />
+    
+    <!-- Structured Data for Dictionary Entry -->
+    <StructuredData 
+      type="DefinedTerm" 
+      data={{
+        term: entry.lemma_devanagari,
+        definition: entry.meaning,
+        termCode: entry.lemma_roman
+      }} 
+    />
+    
+    <!-- Breadcrumb Structured Data -->
+    <StructuredData 
+      type="BreadcrumbList"
+      data={{
+        items: [
+          { name: "Home", url: baseUrl },
+          { name: "Dictionary", url: `${baseUrl}/dictionary` },
+          { name: entry.lemma_devanagari, url: entryUrl }
+        ]
+      }}
+    />
+  </head>
+
+  <div class="max-w-3xl mx-auto px-4 py-8">
+    <!-- Breadcrumbs -->
+    <nav class="text-sm text-slate-500 mb-6">
+      <a href="/" class="hover:text-cyan-400 transition-colors">Home</a>
+      <span class="mx-2">›</span>
+      <a href="/dictionary" class="hover:text-blue-400 transition-colors">Dictionary</a>
+      <span class="mx-2">›</span>
+      <span class="text-slate-400">{entry.lemma_devanagari}</span>
+    </nav>
+
+    <article class="space-y-8">
+      <!-- Trust Signals -->
+      <div class="flex justify-center">
+        <TrustSignals 
+          client:load
+          isCanonical={entry.is_canonical ?? false}
+          confidenceLevel={entry.confidence_level}
+          sourceReference={entry.source_reference}
+          verifiedBy={entry.verified_by}
+          verifiedAt={entry.verified_at}
+        />
+      </div>
+
+      <div>
+        <h1 class="text-3xl md:text-4xl font-serif text-center text-slate-100 mb-4">{entry.lemma_devanagari}</h1>
+        <!-- Copy button -->
+        <div class="flex justify-center">
+          <CopyButton text={entry.lemma_devanagari} label="Word" color="blue" client:load />
+        </div>
+      </div>
+
+      {entry.lemma_roman && (
+        <p class="italic text-slate-400 text-center text-lg">{entry.lemma_roman}</p>
+      )}
+
+      {entry.meaning && (
+        <section class="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
+          <h2 class="font-semibold text-cyan-400 mb-3">Meaning</h2>
+          <p class="text-slate-300 leading-relaxed">{entry.meaning}</p>
+        </section>
+      )}
+
+      <footer class="text-sm text-slate-500 text-center pt-4">
+        <p>Language: {entry.language}</p>
+        <p>Version: {entry.version}</p>
+      </footer>
+
+      <!-- Interaction buttons: likes, bookmarks, shares, reports -->
+      <div class="py-6 border-t border-b border-slate-700 flex justify-center">
+        <InteractionBar
+          client:only="svelte"
+          contentType="dictionary"
+          contentId={entry.id}
+          likes={entry?.likes_count ?? 0}
+          bookmarks={entry?.bookmarks_count ?? 0}
+          shares={entry?.shares_count ?? 0}
+        />
+      </div>
+
+    <Recommendations content_type="dictionary" content_id={entry.id} client:load />
+
+    <div class="text-center pt-4">
+      <a href="/dictionary" class="text-cyan-400 hover:text-cyan-300 underline">← Back to Dictionary</a>
+    </div>
+  </article>
+  </div>
+</BaseLayout>

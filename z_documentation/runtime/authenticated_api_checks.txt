@@ -1,0 +1,15 @@
+AUTH_USER=curl_user_1773860096@example.com
+{"id":3,"email":"curl_user_1773860096@example.com","username":null}
+{"access_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzIiwiZXhwIjoxNzczODYwOTk2LCJ0eXBlIjoiYWNjZXNzIn0.y_cY6HYOjueVWNSl4DLIiGgQOL6aaq-JLiAH8P2Leys","refresh_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzIiwiZXhwIjoxNzc1MDY5Njk2LCJ0eXBlIjoicmVmcmVzaCJ9.WmDoQ5M_W6kaueiFtJ7b4SnXI0ovZMTKTW2KNEAgfqk","token_type":"bearer"}
+200 GET /auth/me :: {"id":3,"email":"curl_user_1773860096@example.com","username":null,"role":"registered","permissions":0,"permission_scopes":null}
+500 GET /submissions/me :: Traceback (most recent call last):   File "/home/veerbhadra/Main/PRJ2/awadhi_new/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_c
+500 POST /submissions :: Traceback (most recent call last):   File "/home/veerbhadra/Main/PRJ2/awadhi_new/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_c
+422 POST /interactions/toggle :: {"detail":[{"type":"missing","loc":["body","interaction"],"msg":"Field required","input":{"content_type":"doha","content_id":1,"interaction_type":"like"}}]}
+200 POST /interactions/share :: {"ok":true,"shares_count":2,"weight_score":0.0}
+422 POST /interactions/report :: {"detail":[{"type":"string_pattern_mismatch","loc":["body","reason"],"msg":"String should match pattern '^(spam|abuse|copyright|other)$'","input":"test","ctx":{"pattern":"^(spam|ab
+403 GET /interactions/users/1/bookmarks :: {"detail":"Not allowed"}
+403 GET /admin/users :: {"detail":"Insufficient role"}
+403 GET /moderation/submissions :: {"detail":"Insufficient role"}
+403 GET /analytics/top :: {"detail":"Insufficient role"}
+200 POST /auth/refresh :: {"access_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzIiwiZXhwIjoxNzczODYwOTk3LCJ0eXBlIjoiYWNjZXNzIn0.aW875MpM4EpqOumSE9DHnL-JWtj6TNh0yysMPGADF-M","token_type":"bearer"
+200 POST /auth/logout :: {"ok":true}

@@ -1,0 +1,126 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+export const prerender = false;
+---
+
+<BaseLayout title="Register · Awadhi New">
+  <meta name="robots" content="noindex,nofollow" />
+
+  <div class="max-w-md mx-auto mt-12 px-4">
+    <h1 class="text-2xl font-serif mb-6">Create Account</h1>
+    
+    <form id="registerForm" class="space-y-4" method="POST" action="javascript:void(0)" novalidate>
+      <div>
+        <label class="block text-sm mb-1">Username (optional)</label>
+        <input name="username" type="text" class="w-full border px-3 py-2 rounded bg-gray-800 text-white" placeholder="Leave blank for email-based username" />
+      </div>
+      
+      <div>
+        <label class="block text-sm mb-1">Email</label>
+        <input name="email" type="email" required class="w-full border px-3 py-2 rounded bg-gray-800 text-white" />
+      </div>
+      
+      <div>
+        <label class="block text-sm mb-1">Password</label>
+        <input name="password" type="password" required minlength="6" class="w-full border px-3 py-2 rounded bg-gray-800 text-white" />
+        <p class="text-xs text-gray-400 mt-1">Minimum 6 characters</p>
+      </div>
+
+      <button id="submitBtn" type="submit" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+        <span id="btnText">Register</span>
+        <span id="btnLoading" class="hidden">Creating account...</span>
+      </button>
+      <p id="error" class="text-red-600 text-sm hidden"></p>
+      <p id="success" class="text-green-600 text-sm hidden"></p>
+      
+      <p class="text-sm text-gray-400 text-center">
+        Already have an account?
+        <a href="/login" class="text-blue-500 hover:underline">Sign in</a>
+      </p>
+    </form>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const form = document.getElementById("registerForm") as HTMLFormElement | null;
+      const errorEl = document.getElementById("error") as HTMLParagraphElement | null;
+      const successEl = document.getElementById("success") as HTMLParagraphElement | null;
+      const submitBtn = document.getElementById("submitBtn") as HTMLButtonElement | null;
+      const btnText = document.getElementById("btnText") as HTMLSpanElement | null;
+      const btnLoading = document.getElementById("btnLoading") as HTMLSpanElement | null;
+
+      if (!form || !errorEl || !successEl || !submitBtn || !btnText || !btnLoading) {
+        console.error('[register] Form elements not found');
+        return;
+      }
+
+      console.log('[register] Form initialized, attaching submit handler');
+
+      form.addEventListener("submit", async (e) => {
+        console.log('[register] Form submitted!');
+        e.preventDefault();
+        e.stopPropagation();
+        
+        errorEl.classList.add("hidden");
+        errorEl.textContent = "";
+        successEl.classList.add("hidden");
+        successEl.textContent = "";
+
+        // Show loading state
+        submitBtn.disabled = true;
+        btnText.classList.add("hidden");
+        btnLoading.classList.remove("hidden");
+
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries()) as Record<string, FormDataEntryValue>;
+        
+        // Remove empty username
+        if (!data.username || String(data.username).trim() === '') {
+          delete data.username;
+        }
+
+        try {
+          const API_BASE = import.meta.env.PUBLIC_API_BASE || "http://localhost:8000";
+          
+          const res = await fetch(API_BASE + "/auth/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+          });
+
+          const json = await res.json();
+          
+          if (!res.ok) {
+            if (res.status === 422 && Array.isArray(json.detail)) {
+              const msg = json.detail
+                .map((d: any) => (d?.loc ? `${d.loc.join(".")}: ${d.msg}` : d?.msg || "Validation error"))
+                .join(", ");
+              throw new Error(msg || "Validation failed");
+            }
+            throw new Error(json.detail || json.message || "Registration failed");
+          }
+
+          // Show success message
+          successEl.textContent = `Account created successfully! Welcome, ${json.username || 'user'}. Redirecting to login...`;
+          successEl.classList.remove("hidden");
+          
+          // Redirect after brief delay
+          setTimeout(() => {
+            window.location.href = "/login";
+          }, 1500);
+        } catch (err: any) {
+          console.error('[register] Error:', err);
+          errorEl.textContent = err?.message || "Registration failed";
+          errorEl.classList.remove("hidden");
+        } finally {
+          // Reset button state
+          submitBtn.disabled = false;
+          btnText.classList.remove("hidden");
+          btnLoading.classList.add("hidden");
+        }
+        
+        return false;
+      });
+    });
+  </script>
+</BaseLayout>

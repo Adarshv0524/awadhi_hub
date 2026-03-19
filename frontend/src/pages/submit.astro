@@ -1,0 +1,86 @@
+---
+// src/pages/submit.astro
+export const prerender = false;
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import SubmissionForm from "../components/submission/SubmissionForm.svelte";
+
+const API_BASE = import.meta.env.PUBLIC_API_BASE ?? "";
+---
+
+<BaseLayout title="Submit Content · Awadhi New">
+  <meta name="robots" content="noindex,nofollow" />
+  
+  <div class="max-w-4xl mx-auto px-4 py-8">
+    <!-- Header Section -->
+    <div class="mb-8 text-center">
+      <h1 class="text-4xl font-serif font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent mb-3">
+        Contribute to Awadhi New
+      </h1>
+      <p class="text-slate-400 text-lg max-w-2xl mx-auto">
+        Share your knowledge of Awadhi language and culture. Submit dohas, dictionary entries, idioms, or articles.
+      </p>
+    </div>
+
+    <!-- Info Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+      <div class="bg-slate-800/50 border border-slate-700 rounded-lg p-5">
+        <div class="flex items-start gap-3">
+          <svg class="w-6 h-6 text-green-400 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+          <div>
+            <h3 class="font-semibold text-cyan-400 mb-1">Auto-Save Enabled</h3>
+            <p class="text-sm text-slate-400">Your work is automatically saved as you type. No need to worry about losing progress.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-800/50 border border-slate-700 rounded-lg p-5">
+        <div class="flex items-start gap-3">
+          <svg class="w-6 h-6 text-blue-400 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
+          </svg>
+          <div>
+            <h3 class="font-semibold text-blue-400 mb-1">Draft & Submit</h3>
+            <p class="text-sm text-slate-400">Save as draft to continue later, or submit for review when ready.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Submission Form -->
+    <div class="bg-slate-900 border border-slate-700 rounded-xl p-6 shadow-2xl">
+      <SubmissionForm client:load apiBase={API_BASE} />
+    </div>
+
+    <!-- Guidelines -->
+    <div class="mt-8 bg-blue-900/20 border border-blue-800/30 rounded-lg p-5">
+      <h3 class="font-semibold text-blue-300 mb-3 flex items-center gap-2">
+        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 16 16">
+          <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+          <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+        </svg>
+        Submission Guidelines
+      </h3>
+      <ul class="text-sm text-blue-200 space-y-2">
+        <li class="flex items-start gap-2">
+          <span class="text-blue-400 mt-1">•</span>
+          <span>Ensure accuracy: Double-check spellings, meanings, and attributions</span>
+        </li>
+        <li class="flex items-start gap-2">
+          <span class="text-blue-400 mt-1">•</span>
+          <span>Provide context: Add meanings, translations, and usage examples where relevant</span>
+        </li>
+        <li class="flex items-start gap-2">
+          <span class="text-blue-400 mt-1">•</span>
+          <span>Respect copyright: Only submit original work or content in the public domain</span>
+        </li>
+        <li class="flex items-start gap-2">
+          <span class="text-blue-400 mt-1">•</span>
+          <span>Review process: All submissions are reviewed by moderators before publication</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+</BaseLayout>

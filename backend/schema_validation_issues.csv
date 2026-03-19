@@ -1,0 +1,5 @@
+table,column,current_type,expected_type,is_pk
+classical_authors,id,BIGINT,INT,True
+classical_works,id,BIGINT,INT,True
+classical_works,author_id,BIGINT,INT,False
+work_chapters_old,work_id,BIGINT,INT,False

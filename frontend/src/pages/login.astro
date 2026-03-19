@@ -1,0 +1,164 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+export const prerender = false;
+---
+
+<BaseLayout title="Login · Awadhi New" noindex>
+  <meta name="robots" content="noindex,nofollow" />
+  
+  <div class="max-w-md mx-auto mt-12 px-4">
+    <h1 class="text-2xl font-serif mb-6">Login</h1>
+
+    <form id="login-form" class="space-y-4" method="POST" action="javascript:void(0)" novalidate>
+      <div>
+        <label class="block text-sm mb-1">Email</label>
+        <input
+          type="email"
+          name="email"
+          required
+          class="w-full border px-3 py-2 rounded bg-gray-800 text-white"
+        />
+      </div>
+
+      <div>
+        <label class="block text-sm mb-1">Password</label>
+        <input
+          type="password"
+          name="password"
+          required
+          class="w-full border px-3 py-2 rounded bg-gray-800 text-white"
+        />
+        <div class="mt-2 text-right">
+          <a href="/forgot-password" class="text-sm text-cyan-400 hover:text-cyan-300 hover:underline">Forgot password?</a>
+        </div>
+      </div>
+
+      <button
+        id="submitBtn"
+        type="submit"
+        class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <span id="btnText">Sign in</span>
+        <span id="btnLoading" class="hidden">Signing in...</span>
+      </button>
+
+      <p id="login-error" class="text-sm text-red-600 hidden"></p>
+
+      <p class="text-sm text-gray-400 text-center">
+        New here?
+        <a href="/register" class="text-blue-500 hover:underline">Create an account</a>
+      </p>
+      
+      <!-- TODO: Implement Google OAuth -->
+      <!-- <div class="mt-4">
+        <button type="button" class="w-full border border-gray-600 text-white py-2 rounded hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
+          <svg class="w-5 h-5" viewBox="0 0 24 24">Google Icon</svg>
+          Sign in with Google
+        </button>
+      </div> -->
+    </form>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const form = document.getElementById("login-form") as HTMLFormElement | null;
+      const errorEl = document.getElementById("login-error") as HTMLParagraphElement | null;
+      const submitBtn = document.getElementById("submitBtn") as HTMLButtonElement | null;
+      const btnText = document.getElementById("btnText") as HTMLSpanElement | null;
+      const btnLoading = document.getElementById("btnLoading") as HTMLSpanElement | null;
+
+      if (!form || !errorEl || !submitBtn || !btnText || !btnLoading) {
+        console.error('[login] Form elements not found');
+        return;
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('session_expired') === '1') {
+        errorEl.textContent = 'Session expired. Please login again.';
+        errorEl.classList.remove('hidden');
+      }
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        errorEl.classList.add("hidden");
+        errorEl.textContent = "";
+        
+        // Show loading state
+        submitBtn.disabled = true;
+        btnText.classList.add("hidden");
+        btnLoading.classList.remove("hidden");
+
+        const emailInput = form.querySelector('[name="email"]') as HTMLInputElement | null;
+        const passwordInput = form.querySelector('[name="password"]') as HTMLInputElement | null;
+        const email = emailInput?.value.trim() ?? "";
+        const password = passwordInput?.value ?? "";
+
+        if (!email || !password) {
+          errorEl.textContent = "Email and password are required";
+          errorEl.classList.remove("hidden");
+          submitBtn.disabled = false;
+          btnText.classList.remove("hidden");
+          btnLoading.classList.add("hidden");
+          return false;
+        }
+
+        try {
+          const API_BASE = import.meta.env.PUBLIC_API_BASE || "http://localhost:8000";
+          
+          const payload = { email, password };
+          // Login request
+          const res = await fetch(API_BASE + "/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          const data = await res.json();
+          if (!res.ok) {
+            // Handle Pydantic validation errors (422)
+            if (res.status === 422 && data.detail) {
+              const errors = Array.isArray(data.detail) ? data.detail : [data.detail];
+              const errorMsg = errors.map((e: any) => {
+                if (typeof e === 'object' && e.msg) {
+                  return `${e.loc?.join('.') || 'Field'}: ${e.msg}`;
+                }
+                return typeof e === 'string' ? e : JSON.stringify(e);
+              }).join(', ');
+              throw new Error(errorMsg || "Validation failed");
+            }
+            throw new Error(data.detail || data.message || "Login failed");
+          }
+          
+          // Store tokens
+          localStorage.setItem("awadhi_access_token", data.access_token);
+          localStorage.setItem("awadhi_refresh_token", data.refresh_token);
+          
+          // Fetch user info and cache it
+          const meRes = await fetch(API_BASE + "/auth/me", {
+            headers: { Authorization: `Bearer ${data.access_token}` },
+          });
+          
+          if (meRes.ok) {
+            const user = await meRes.json();
+            localStorage.setItem("awadhi_user_cache", JSON.stringify(user));
+          }
+
+          window.location.href = "/";
+        } catch (err: any) {
+          console.error('[login] Error:', err);
+          errorEl.textContent = err?.message || "Login failed";
+          errorEl.classList.remove("hidden");
+        } finally {
+          // Reset button state
+          submitBtn.disabled = false;
+          btnText.classList.remove("hidden");
+          btnLoading.classList.add("hidden");
+        }
+        
+        return false;
+      });
+    });
+  </script>
+</BaseLayout>

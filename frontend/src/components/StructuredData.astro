@@ -1,0 +1,84 @@
+---
+// src/components/StructuredData.astro
+// Helper component for adding JSON-LD structured data
+
+const { type, data } = Astro.props;
+
+let jsonLd = {};
+
+if (type === "Article") {
+  jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    headline: data.title || data.headline,
+    description: data.description || data.excerpt,
+    datePublished: data.datePublished,
+    dateModified: data.dateModified || data.datePublished,
+    author: data.author ? {
+      "@type": "Person",
+      name: data.author
+    } : {
+      "@type": "Organization",
+      name: "Awadhi New"
+    },
+    publisher: {
+      "@type": "Organization",
+      name: "Awadhi New",
+      logo: {
+        "@type": "ImageObject",
+        url: "https://awadhi.new/logo.png"
+      }
+    },
+    mainEntityOfPage: {
+      "@type": "WebPage",
+      "@id": data.url
+    },
+    inLanguage: "awa"
+  };
+} else if (type === "CreativeWork") {
+  // For Doha, Idioms
+  jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "CreativeWork",
+    name: data.text || data.title,
+    description: data.meaning || data.description,
+    inLanguage: "awa",
+    datePublished: data.datePublished,
+    ...(data.author && {
+      author: {
+        "@type": "Person",
+        name: data.author
+      }
+    }),
+    ...(data.work && {
+      isPartOf: {
+        "@type": "Book",
+        name: data.work
+      }
+    })
+  };
+} else if (type === "DefinedTerm") {
+  // For Dictionary entries
+  jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "DefinedTerm",
+    name: data.term,
+    description: data.definition,
+    inLanguage: "awa",
+    termCode: data.termCode
+  };
+} else if (type === "BreadcrumbList") {
+  jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: data.items.map((item: any, index: number) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: item.name,
+      item: item.url
+    }))
+  };
+}
+---
+
+<script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />

@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: awadhi_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-awadhi_db}
+      MYSQL_USER: ${MYSQL_USER:-awadhi_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-awadhi_pass}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: awadhi_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      MYSQL_HOST: db
+      MYSQL_PORT: 3306
+      MYSQL_USER: ${MYSQL_USER:-awadhi_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-awadhi_pass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-awadhi_db}
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://awadhi.new}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: awadhi_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    environment:
+      PUBLIC_API_BASE: ${PUBLIC_API_BASE:-http://localhost:8000}
+      SITE: ${SITE:-https://awadhi.new}
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:

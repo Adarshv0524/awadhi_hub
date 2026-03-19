@@ -1,0 +1,190 @@
+---
+/*
+  src/components/Recommendations.astro
+
+  Props:
+    - contentType: "doha" | "dictionary" | "idiom" | "article"  (required)
+    - contentId: string | number (required)
+    - heading?: string (optional override)
+    - max?: number (default 5)
+    - hideOnVersion?: boolean (default true) - hide when ?version= present
+
+  Behaviour:
+    - Server-side fetch to /recommendations/{contentType}/{contentId}
+    - Filters results to same-type only (strict)
+    - Removes items without an id
+    - Derives human-friendly label/snippet per item type
+    - Sorts by score desc then id asc
+    - Limits to `max` items (default 5)
+    - Hides section entirely if no items
+    - Non-blocking: on API error, logs in DEV and hides section
+*/
+
+const {
+  contentType,
+  contentId,
+  heading = null,
+  max = 5,
+  hideOnVersion = true,
+} = Astro.props;
+
+import { api } from "../lib/api";
+
+let recItems = [];
+let apiError = null;
+let shouldRender = true;
+
+if (!contentType || !contentId) {
+  // missing required props -> nothing to do
+  shouldRender = false;
+} else {
+  // Hide on versioned pages if requested
+  try {
+    if (hideOnVersion && typeof Astro.request !== "undefined") {
+      const urlObj = new URL(Astro.request.url);
+      if (urlObj.searchParams.get("version")) {
+        // page is versioned, do not render recommendations
+        shouldRender = false;
+      }
+    }
+  } catch (e) {
+    // ignore — fall back to rendering
+    if (import.meta.env.DEV) console.warn("[Recommendations] unable to inspect request URL", e);
+  }
+}
+
+function normalizePayload(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+  if (payload.results && Array.isArray(payload.results)) return payload.results;
+  if (payload.items && Array.isArray(payload.items)) return payload.items;
+  // try to find the first array-valued field
+  for (const v of Object.values(payload)) {
+    if (Array.isArray(v)) return v;
+  }
+  return [];
+}
+
+/** derive canonical path for known types; returns null if cannot */
+function canonicalPathFor(item) {
+  if (!item) return null;
+  const t = (item.content_type || item.type || item.item_type || "").toString().toLowerCase();
+  const id = item.id ?? item.pk ?? item.slug;
+  if (!id) return null;
+  if (t === "doha" || t === "dohas") return `/doha/${id}`;
+  if (t === "dictionary") return `/dictionary/${id}`;
+  if (t === "idiom" || t === "idioms") return `/idioms/${id}`;
+  if (t === "article" || t === "articles") return `/articles/${id}`;
+  // If backend didn't provide a content_type, guess based on fields
+  if (item.main_text) return `/doha/${id}`;
+  if (item.lemma_devanagari || item.lemma_roman) return `/dictionary/${id}`;
+  if (item.title) return `/articles/${id}`;
+  return null;
+}
+
+/** produce label for item based on type and available fields */
+function labelFor(item) {
+  if (!item) return "";
+  // Prefer backend-provided friendly label if available
+  if (item.title_or_text) return String(item.title_or_text);
+  if (item.title) return String(item.title);
+  if (item.lemma_devanagari) {
+    return String(item.lemma_devanagari) + (item.lemma_roman ? ` — ${item.lemma_roman}` : "");
+  }
+  if (item.text_devanagari) return String(item.text_devanagari);
+  if (item.main_text) {
+    // For doha, show only the first non-empty line (user requested)
+    const firstLine = String(item.main_text).split(/\r?\n/).map(s => s.trim()).find(Boolean);
+    return firstLine ?? String(item.main_text).slice(0, 120);
+  }
+  if (item.word) return String(item.word);
+  // fallback to id
+  return `Item ${item.id ?? ""}`;
+}
+
+/** produce snippet (short) for display under label */
+function snippetFor(item) {
+  if (!item) return "";
+  if (item.meaning) return String(item.meaning).slice(0, 180);
+  if (item.excerpt) return String(item.excerpt).slice(0, 180);
+  if (item.body) return String(item.body).slice(0, 180);
+  if (item.main_text) {
+    // show next part after first line if present
+    const lines = String(item.main_text).split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    if (lines.length > 1) return lines.slice(1).join(" ").slice(0, 180);
+    return "";
+  }
+  return "";
+}
+
+if (shouldRender) {
+  try {
+    if (import.meta.env.DEV) {
+      console.log(`[DEV][Recommendations] Requesting /recommendations/${contentType}/${contentId}`);
+    }
+    const payload = await api(`/recommendations/${contentType}/${contentId}`);
+    if (import.meta.env.DEV) console.log("[DEV][Recommendations] payload:", payload);
+
+    let items = normalizePayload(payload);
+
+    // Filter: strict same-type only
+    items = items.filter(it => {
+      const t = (it.content_type || it.type || it.item_type || "").toString().toLowerCase();
+      // Some backends use singular/plural variants
+      const normalized = t.replace(/s$/, "");
+      return normalized === String(contentType).toLowerCase().replace(/s$/, "");
+    });
+
+    // Defensive: items must carry an id (or pk/slug)
+    items = items.filter(it => (it.id ?? it.pk ?? it.slug));
+
+    // Build canonical path and drop items that cannot map
+    items = items.map(it => {
+      const path = canonicalPathFor(it);
+      return { ...it, __canonicalPath: path };
+    }).filter(it => it.__canonicalPath);
+
+    // Sort: by score desc (if present), then id asc
+    items.sort((a, b) => {
+      const sa = typeof a.score === "number" ? a.score : 0;
+      const sb = typeof b.score === "number" ? b.score : 0;
+      if (sb !== sa) return sb - sa;
+      const ida = a.id ?? a.pk ?? 0;
+      const idb = b.id ?? b.pk ?? 0;
+      return String(ida).localeCompare(String(idb), undefined, {numeric: true});
+    });
+
+    // Limit
+    recItems = items.slice(0, Number(max || 5));
+  } catch (e) {
+    apiError = e;
+    // non-blocking: log in DEV and hide the section (do not throw)
+    if (import.meta.env.DEV) {
+      console.error("[DEV][Recommendations] API error:", e);
+    }
+    recItems = [];
+  }
+}
+---
+{/** Render: if nothing to show -> output nothing (no empty heading) **/}
+{recItems && recItems.length > 0 ? (
+  <section class="mt-8" aria-labelledby="recommendations-heading">
+    <h2 id="recommendations-heading" class="text-xl font-semibold mb-3">
+      {heading ?? (contentType === "doha" ? "Related Dohas" : contentType === "dictionary" ? "Related Words" : contentType === "idiom" ? "Related Idioms" : contentType === "article" ? "Related Articles" : "Related")}
+    </h2>
+
+    <ul class="space-y-3">
+      {recItems.map((it) => {
+        const url = it.__canonicalPath;
+        const label = labelFor(it);
+        const snippet = snippetFor(it);
+        return (
+          <li class="border-l-2 pl-3">
+            <a href={url} class="underline text-lg" rel="bookmark">{label}</a>
+            {snippet && <div class="text-sm text-stone-600 mt-1">{snippet}</div>}
+          </li>
+        );
+      })}
+    </ul>
+  </section>
+) : null}

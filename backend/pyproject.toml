@@ -1,0 +1,20 @@
+# D:/PRJ2/awadhi_new/backend/pyproject.toml
+
+[build-system]
+# Specifies the tools needed to build the project
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# Basic metadata for your project
+name = "awadhi_backend"  
+version = "0.1.0"
+description = "FastAPI Backend for Awadhi Project"
+requires-python = ">=3.10"
+license = { text = "MIT" } # Example license
+
+[tool.setuptools.packages.find]
+# This section tells setuptools to find packages starting from the current directory ('.')
+# and specifically include 'app' and 'tests' as Python packages.
+where = ["."]
+include = ["app", "tests"]

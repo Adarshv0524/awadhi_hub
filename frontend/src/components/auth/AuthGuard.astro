@@ -1,0 +1,49 @@
+---
+type UserRole = "guest" | "registered" | "moderator" | "senior_moderator" | "admin";
+
+const minRole: UserRole = (Astro.props.minRole ?? "registered") as UserRole;
+const apiBase: string = Astro.props.apiBase || (import.meta.env.PUBLIC_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : ""));
+
+---
+
+<script is:inline define:vars={{ apiBase, minRole }}>
+	(async function () {
+		try {
+			if (typeof window === "undefined") return;
+			const token = window.localStorage.getItem("awadhi_access_token");
+			if (!token) {
+				window.location.href = "/login";
+				return;
+			}
+
+			if (!apiBase) {
+				// No API base configured; safest behavior is to force login.
+				window.location.href = "/login";
+				return;
+			}
+
+			const res = await fetch(`${apiBase}/auth/me`, {
+				headers: { Authorization: `Bearer ${token}` },
+			});
+
+			if (!res.ok) {
+				window.localStorage.removeItem("awadhi_access_token");
+				window.localStorage.removeItem("awadhi_refresh_token");
+				window.localStorage.removeItem("awadhi_user_cache");
+				window.location.href = "/login";
+				return;
+			}
+
+			const me = await res.json().catch(() => null);
+			const role = me?.role;
+			const ranks = { guest: 0, registered: 1, moderator: 2, senior_moderator: 3, admin: 4 };
+			const ok = role && ranks[role] >= ranks[minRole];
+			if (!ok) {
+				window.location.href = "/";
+			}
+		} catch (_) {
+			// Non-blocking; if the admin page loads without data, tables will show 401/403.
+		}
+	})();
+</script>
+

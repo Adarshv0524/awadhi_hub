@@ -1,0 +1,538 @@
+[
+  {
+    "method": "POST",
+    "path": "/auth/register",
+    "url": "http://127.0.0.1:8000/auth/register",
+    "status": 200,
+    "auth_used": false,
+    "response_snippet": "{\"id\":1,\"email\":\"copilot_1773859901@example.com\",\"username\":\"copilot_1773859901\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/login",
+    "url": "http://127.0.0.1:8000/auth/login",
+    "status": 200,
+    "auth_used": false,
+    "response_snippet": "{\"access_token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzczODYwODAyLCJ0eXBlIjoiYWNjZXNzIn0.rEQYEwugHWL6u9G3NipokxeWiJswJSB0kdCcX3RDEx4\",\"refresh_token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWI"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/audit_logs",
+    "url": "http://127.0.0.1:8000/admin/audit_logs",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/audit_logs/export/csv",
+    "url": "http://127.0.0.1:8000/admin/audit_logs/export/csv",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/audit_logs/{id}",
+    "url": "http://127.0.0.1:8000/admin/audit_logs/1",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/hierarchy/authors",
+    "url": "http://127.0.0.1:8000/admin/hierarchy/authors",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/hierarchy/authors/{author_id}",
+    "url": "http://127.0.0.1:8000/admin/hierarchy/authors/1",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/hierarchy/authors/{author_id}/works",
+    "url": "http://127.0.0.1:8000/admin/hierarchy/authors/1/works",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/hierarchy/chapters/{chapter_id}",
+    "url": "http://127.0.0.1:8000/admin/hierarchy/chapters/1",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/hierarchy/works/{work_id}",
+    "url": "http://127.0.0.1:8000/admin/hierarchy/works/1",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/hierarchy/works/{work_id}/chapters",
+    "url": "http://127.0.0.1:8000/admin/hierarchy/works/1/chapters",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/system_settings",
+    "url": "http://127.0.0.1:8000/admin/system_settings",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/system_settings/{key}",
+    "url": "http://127.0.0.1:8000/admin/system_settings/sample_key",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "PUT",
+    "path": "/admin/system_settings/{key}",
+    "url": "http://127.0.0.1:8000/admin/system_settings/sample_key",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/admin/system_settings/{key}",
+    "url": "http://127.0.0.1:8000/admin/system_settings/sample_key",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users",
+    "url": "http://127.0.0.1:8000/admin/users",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/users",
+    "url": "http://127.0.0.1:8000/admin/users",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/users/{user_id}",
+    "url": "http://127.0.0.1:8000/admin/users/1",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "PATCH",
+    "path": "/admin/users/{user_id}",
+    "url": "http://127.0.0.1:8000/admin/users/1",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/analytics/demand",
+    "url": "http://127.0.0.1:8000/analytics/demand",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/analytics/growth",
+    "url": "http://127.0.0.1:8000/analytics/growth",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/analytics/top",
+    "url": "http://127.0.0.1:8000/analytics/top",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/articles",
+    "url": "http://127.0.0.1:8000/articles",
+    "status": 200,
+    "auth_used": false,
+    "response_snippet": "[]"
+  },
+  {
+    "method": "GET",
+    "path": "/articles/by-tag/{tag}",
+    "url": "http://127.0.0.1:8000/articles/by-tag/sample",
+    "status": 200,
+    "auth_used": false,
+    "response_snippet": "[]"
+  },
+  {
+    "method": "GET",
+    "path": "/articles/recent/list",
+    "url": "http://127.0.0.1:8000/articles/recent/list",
+    "status": 200,
+    "auth_used": false,
+    "response_snippet": "[]"
+  },
+  {
+    "method": "GET",
+    "path": "/articles/search/advanced",
+    "url": "http://127.0.0.1:8000/articles/search/advanced",
+    "status": 200,
+    "auth_used": false,
+    "response_snippet": "[]"
+  },
+  {
+    "method": "GET",
+    "path": "/articles/stats",
+    "url": "http://127.0.0.1:8000/articles/stats",
+    "status": 200,
+    "auth_used": false,
+    "response_snippet": "{\"total_articles\":0,\"by_tag\":{},\"recent_count\":0}"
+  },
+  {
+    "method": "GET",
+    "path": "/articles/tags/list",
+    "url": "http://127.0.0.1:8000/articles/tags/list",
+    "status": 200,
+    "auth_used": false,
+    "response_snippet": "{\"tags\":[]}"
+  },
+  {
+    "method": "GET",
+    "path": "/articles/{article_id}",
+    "url": "http://127.0.0.1:8000/articles/1",
+    "status": 404,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Article not found\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/login",
+    "url": "http://127.0.0.1:8000/auth/login",
+    "status": 500,
+    "auth_used": false,
+    "response_snippet": "Traceback (most recent call last):\n  File \"/home/veerbhadra/Main/PRJ2/awadhi_new/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py\", line 1967, in _exec_single_context\n    self.dialect.do_execute(\n  Fi"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/logout",
+    "url": "http://127.0.0.1:8000/auth/logout",
+    "status": 200,
+    "auth_used": false,
+    "response_snippet": "{\"ok\":true}"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/me",
+    "url": "http://127.0.0.1:8000/auth/me",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/oauth/google/callback",
+    "url": "http://127.0.0.1:8000/auth/oauth/google/callback",
+    "status": 400,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing code\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/refresh",
+    "url": "http://127.0.0.1:8000/auth/refresh",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Refresh token revoked\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/register",
+    "url": "http://127.0.0.1:8000/auth/register",
+    "status": 400,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Email already registered\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/authors",
+    "url": "http://127.0.0.1:8000/authors",
+    "status": 200,
+    "auth_used": false,
+    "response_snippet": "[]"
+  },
+  {
+    "method": "GET",
+    "path": "/authors/{author_slug}",
+    "url": "http://127.0.0.1:8000/authors/sample",
+    "status": 404,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Author not found\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/authors/{author_slug}/works",
+    "url": "http://127.0.0.1:8000/authors/sample/works",
+    "status": 404,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Author not found\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/authors/{author_slug}/works/{work_slug}",
+    "url": "http://127.0.0.1:8000/authors/sample/works/sample",
+    "status": 404,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Author not found\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/authors/{author_slug}/works/{work_slug}/chapters",
+    "url": "http://127.0.0.1:8000/authors/sample/works/sample/chapters",
+    "status": 404,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Author not found\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/content/by-path/{hierarchy_path}",
+    "url": "http://127.0.0.1:8000/content/by-path/sample",
+    "status": 404,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Doha not found for this path\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/content/doha",
+    "url": "http://127.0.0.1:8000/content/doha",
+    "status": 200,
+    "auth_used": false,
+    "response_snippet": "[]"
+  },
+  {
+    "method": "GET",
+    "path": "/content/doha/{doha_id}",
+    "url": "http://127.0.0.1:8000/content/doha/1",
+    "status": 404,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Doha not found\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/content/doha/{doha_id}/history",
+    "url": "http://127.0.0.1:8000/content/doha/1/history",
+    "status": 404,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Doha not found\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/dictionary",
+    "url": "http://127.0.0.1:8000/dictionary",
+    "status": 200,
+    "auth_used": false,
+    "response_snippet": "[]"
+  },
+  {
+    "method": "GET",
+    "path": "/dictionary/{entry_id}",
+    "url": "http://127.0.0.1:8000/dictionary/1",
+    "status": 404,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Dictionary entry not found\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/health",
+    "url": "http://127.0.0.1:8000/health",
+    "status": 200,
+    "auth_used": false,
+    "response_snippet": "{\"status\":\"ok\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/idioms",
+    "url": "http://127.0.0.1:8000/idioms",
+    "status": 200,
+    "auth_used": false,
+    "response_snippet": "[]"
+  },
+  {
+    "method": "GET",
+    "path": "/idioms/{idiom_id}",
+    "url": "http://127.0.0.1:8000/idioms/1",
+    "status": 404,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Idiom not found\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/interactions/report",
+    "url": "http://127.0.0.1:8000/interactions/report",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/interactions/share",
+    "url": "http://127.0.0.1:8000/interactions/share",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/interactions/toggle",
+    "url": "http://127.0.0.1:8000/interactions/toggle",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/interactions/users/{user_id}/bookmarks",
+    "url": "http://127.0.0.1:8000/interactions/users/1/bookmarks",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/moderation/batch",
+    "url": "http://127.0.0.1:8000/moderation/batch",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/moderation/batch_approve",
+    "url": "http://127.0.0.1:8000/moderation/batch_approve",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/moderation/submissions",
+    "url": "http://127.0.0.1:8000/moderation/submissions",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/moderation/submissions/{submission_id}",
+    "url": "http://127.0.0.1:8000/moderation/submissions/1",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/moderation/submissions/{submission_id}/approve",
+    "url": "http://127.0.0.1:8000/moderation/submissions/1/approve",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/moderation/submissions/{submission_id}/reject",
+    "url": "http://127.0.0.1:8000/moderation/submissions/1/reject",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/recommendations/{content_type}/{content_id}",
+    "url": "http://127.0.0.1:8000/recommendations/doha/1",
+    "status": 500,
+    "auth_used": false,
+    "response_snippet": "Traceback (most recent call last):\n  File \"/home/veerbhadra/Main/PRJ2/awadhi_new/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py\", line 1967, in _exec_single_context\n    self.dialect.do_execute(\n  Fi"
+  },
+  {
+    "method": "GET",
+    "path": "/search",
+    "url": "http://127.0.0.1:8000/search",
+    "status": 200,
+    "auth_used": false,
+    "response_snippet": "{\"total\":0,\"results\":[]}"
+  },
+  {
+    "method": "POST",
+    "path": "/submissions",
+    "url": "http://127.0.0.1:8000/submissions",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/submissions/me",
+    "url": "http://127.0.0.1:8000/submissions/me",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/submissions/{submission_id}",
+    "url": "http://127.0.0.1:8000/submissions/1",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "PUT",
+    "path": "/submissions/{submission_id}",
+    "url": "http://127.0.0.1:8000/submissions/1",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "DELETE",
+    "path": "/submissions/{submission_id}",
+    "url": "http://127.0.0.1:8000/submissions/1",
+    "status": 401,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"Missing credentials\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/users/{username}",
+    "url": "http://127.0.0.1:8000/users/sample",
+    "status": 404,
+    "auth_used": false,
+    "response_snippet": "{\"detail\":\"User not found\"}"
+  }
+]

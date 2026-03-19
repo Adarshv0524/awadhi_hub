@@ -1,0 +1,46 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { api } from "../lib/api";
+
+type Article = {
+  id: number;
+  title: string;
+  summary?: string | null;
+};
+
+let articles: Article[] = [];
+let error: string | null = null;
+
+try {
+  articles = await api<Article[]>("/articles");
+} catch (e) {
+  error = "Unable to load articles.";
+  if (import.meta.env.DEV) console.error(e);
+}
+---
+
+<BaseLayout title="Articles · Awadhi New">
+  <h1 class="text-2xl font-serif mb-6">Articles</h1>
+
+  {error && <p class="text-red-600">{error}</p>}
+
+  {!error && (
+    <ul class="space-y-6">
+      {articles.map((article) => (
+        <li>
+          <!-- ✅ FIX: use ID, not slug -->
+          <a
+            href={`/articles/${article.id}`}
+            class="text-lg underline hover:no-underline"
+          >
+            {article.title}
+          </a>
+
+          {article.summary && (
+            <p class="text-sm text-stone-600">{article.summary}</p>
+          )}
+        </li>
+      ))}
+    </ul>
+  )}
+</BaseLayout>

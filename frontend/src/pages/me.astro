@@ -1,0 +1,7 @@
+---
+// Redirect /me to /dashboard for consistency
+export const prerender = false;
+
+// Redirect to dashboard
+return Astro.redirect("/dashboard", 301);
+---

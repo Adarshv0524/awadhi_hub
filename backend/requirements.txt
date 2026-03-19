@@ -1,0 +1,18 @@
+fastapi
+uvicorn[standard]
+sqlalchemy>=1.4
+alembic
+pydantic
+python-dotenv
+bcrypt
+PyJWT
+httpx
+python-multipart
+psycopg2-binary   # if using Postgres; for MySQL use pymysql / mysqlclient
+pymysql
+pytest
+pytest-asyncio
+httpx
+pydantic[email]
+cachetools
+freezegun
