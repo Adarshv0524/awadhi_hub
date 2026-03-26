@@ -17,6 +17,9 @@ from app.db.models import (
     WorkChapter,
     EngagementKPI,
 )
+from app.schemas.content_navigation import DohaNavigationOut
+from app.schemas.content_chapter import ChapterDohaItem, ChapterDohasOut
+from app.services.content_service import get_doha_navigation
 
 router = APIRouter(prefix="/content", tags=["content"])
 
@@ -141,6 +144,47 @@ def _serialize_doha_with_metadata(row) -> dict:
     }
 
 
+def _serialize_chapter_doha(doha: DohaEntry) -> ChapterDohaItem:
+    return ChapterDohaItem(
+        id=doha.id,
+        hierarchy_path=doha.hierarchy_path,
+        chapter_id=doha.chapter_id,
+        number_in_chapter=doha.number_in_chapter,
+        main_text=doha.main_text,
+        meaning=doha.meaning,
+        text_devanagari=doha.text_devanagari,
+        text_romanized=doha.text_romanized,
+    )
+
+
+def _get_chapter_dohas_payload(
+    db: Session,
+    chapter: WorkChapter,
+    offset: int,
+    limit: int,
+) -> ChapterDohasOut:
+    q = db.query(DohaEntry).filter(
+        DohaEntry.chapter_id == chapter.id,
+        DohaEntry.is_deleted == False,
+        DohaEntry.status == "active",
+    )
+    total = q.count()
+    items = (
+        q.order_by(DohaEntry.number_in_chapter.asc(), DohaEntry.id.asc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return ChapterDohasOut(
+        chapter_id=chapter.id,
+        chapter_slug=chapter.slug,
+        total=total,
+        offset=offset,
+        limit=limit,
+        items=[_serialize_chapter_doha(i) for i in items],
+    )
+
+
 
 @router.get("/doha", response_model=List[DohaOut])
 def list_dohas(
@@ -180,6 +224,77 @@ def get_doha(doha_id: int, db: Session = Depends(get_db)):
     if doha.status != "active":
         raise HTTPException(status_code=404, detail="Doha not found")
     return _serialize_doha_with_metadata(row)
+
+
+@router.get("/doha/{doha_id}/navigation", response_model=DohaNavigationOut)
+def get_doha_navigation_endpoint(doha_id: int, db: Session = Depends(get_db)):
+    """Return previous/current/next doha cards based on chapter sequence."""
+    return get_doha_navigation(db, doha_id)
+
+
+@router.get("/chapters/{chapter_id}/dohas", response_model=ChapterDohasOut)
+def list_chapter_dohas(
+    chapter_id: int,
+    db: Session = Depends(get_db),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=200),
+):
+    chapter = (
+        db.query(WorkChapter)
+        .filter(WorkChapter.id == chapter_id, WorkChapter.is_deleted == False)
+        .first()
+    )
+    if not chapter:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+
+    return _get_chapter_dohas_payload(db, chapter, offset, limit)
+
+
+@router.get(
+    "/by-path/{author_slug}/{work_slug}/{chapter_slug}/dohas",
+    response_model=ChapterDohasOut,
+)
+def list_chapter_dohas_by_path(
+    author_slug: str,
+    work_slug: str,
+    chapter_slug: str,
+    db: Session = Depends(get_db),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=200),
+):
+    author = (
+        db.query(ClassicalAuthor)
+        .filter(ClassicalAuthor.slug == author_slug, ClassicalAuthor.is_deleted == False)
+        .first()
+    )
+    if not author:
+        raise HTTPException(status_code=404, detail="Author not found")
+
+    work = (
+        db.query(ClassicalWork)
+        .filter(
+            ClassicalWork.author_id == author.id,
+            ClassicalWork.slug == work_slug,
+            ClassicalWork.is_deleted == False,
+        )
+        .first()
+    )
+    if not work:
+        raise HTTPException(status_code=404, detail="Work not found")
+
+    chapter = (
+        db.query(WorkChapter)
+        .filter(
+            WorkChapter.work_id == work.id,
+            WorkChapter.slug == chapter_slug,
+            WorkChapter.is_deleted == False,
+        )
+        .first()
+    )
+    if not chapter:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+
+    return _get_chapter_dohas_payload(db, chapter, offset, limit)
 
 
 @router.get("/doha/{doha_id}/history", response_model=List[ContentVersionOut])

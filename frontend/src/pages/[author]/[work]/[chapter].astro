@@ -7,9 +7,8 @@ import Breadcrumbs from "../../../components/content/Breadcrumbs.svelte";
 
 /**
  * Chapter page:
- * - Leaf attempt: /content/by-path/{hierarchy_path}  (hierarchy encoded as ONE path param)
- * - Container fallback: /search?author=...&work=...&chapter=...
- * - If both empty -> show friendly "no content yet" (do NOT redirect to 404)
+ * - Dedicated chapter doha endpoint: /content/by-path/{author}/{work}/{chapter}/dohas
+ * - Fetch paginated results and merge on server for complete chapter rendering
  */
 
 const params = Astro.params ?? {};
@@ -30,86 +29,51 @@ const safeDecode = (s: any) => {
 const displayTitle = (() => (safeDecode(chapter) || "").replace(/-/g, " "));
 
 const hierarchy = `${author}/${work}/${chapter}`;
-const encodedHierarchy = [author, work, chapter].map((p) => encodeURIComponent(String(p))).join("/");
-const leafPath = `/content/by-path/${encodedHierarchy}`;
-const containerQuery = `/search?author=${encodeURIComponent(author)}&work=${encodeURIComponent(work)}&chapter=${encodeURIComponent(chapter)}`;
+const encodedPath = [author, work, chapter].map((p) => encodeURIComponent(String(p))).join("/");
+const chapterDohasBase = `/content/by-path/${encodedPath}/dohas`;
+const pageSize = 100;
 
-let leafContent = null;
-let containerItems = [];
+let chapterItems = [];
+let total = 0;
 let pageError = null;
 let isEmptyChapter = false;
 
-async function tryFetchLeaf() {
-  try {
-    const res = await api(leafPath);
-    // treat as leaf only if it has expected fields
-    if (res && typeof res === "object" && (res.main_text || res.title || res.id || res.hierarchy_path)) {
-      return res;
-    }
-    return null;
-  } catch (e: any) {
-    // e is ApiError object with .status most likely
-    if (e && typeof e === "object" && "status" in e) {
-      // bubble status up
-      throw e;
-    }
-    throw e;
-  }
-}
+async function fetchAllChapterDohas() {
+  let offset = 0;
+  const merged = [];
+  let expectedTotal = 0;
 
-async function tryFetchContainer() {
-  try {
-    const res = await api(containerQuery);
-    // Accept multiple shapes: array or { results: [...] }
-    if (Array.isArray(res)) return res;
-    if (res && Array.isArray(res.results)) return res.results;
-    // Some responses might be object with `items` — handle defensively
-    if (res && Array.isArray(res.items)) return res.items;
-    return [];
-  } catch (e) {
-    throw e;
+  while (true) {
+    const res = await api(`${chapterDohasBase}?offset=${offset}&limit=${pageSize}`);
+    const items = Array.isArray(res?.items) ? res.items : [];
+    expectedTotal = Number(res?.total ?? merged.length + items.length);
+    merged.push(...items);
+
+    if (items.length < pageSize || merged.length >= expectedTotal) {
+      break;
+    }
+    offset += pageSize;
   }
+
+  merged.sort((a, b) => {
+    const aNum = typeof a?.number_in_chapter === "number" ? a.number_in_chapter : Number.MAX_SAFE_INTEGER;
+    const bNum = typeof b?.number_in_chapter === "number" ? b.number_in_chapter : Number.MAX_SAFE_INTEGER;
+    if (aNum !== bNum) return aNum - bNum;
+    return (a?.id ?? 0) - (b?.id ?? 0);
+  });
+
+  return {
+    items: merged,
+    total: expectedTotal || merged.length,
+  };
 }
 
 // Server-side fetch flow
 try {
-  // 1) Try leaf
-  try {
-    const leaf = await tryFetchLeaf();
-    if (leaf) leafContent = leaf;
-  } catch (leafErr: any) {
-    if (leafErr && leafErr.status === 404) {
-      if (import.meta.env.DEV) console.debug("[Chapter] Leaf not found (404), will try container", leafPath);
-    } else {
-      console.error("[Chapter] Leaf fetch error (non-404):", leafErr, { leafPath });
-      pageError = "Unable to load chapter content at the moment.";
-    }
-  }
-
-  // 2) If no leaf AND no fatal error, try container (search)
-  if (!leafContent && !pageError) {
-    try {
-      const items = await tryFetchContainer();
-      containerItems = Array.isArray(items) ? items : [];
-      // Filter to safe items only (id or main_text/title)
-      containerItems = containerItems.filter((it) => it && (it.id || it.main_text || it.title || it.hierarchy_path));
-      if (import.meta.env.DEV) console.debug("[Chapter] containerItems", containerItems.length, { containerQuery });
-
-      // If both leaf & container empty -> show friendly empty state (do not redirect)
-      if (!leafContent && containerItems.length === 0) {
-        isEmptyChapter = true;
-      }
-    } catch (containerErr: any) {
-      if (containerErr && containerErr.status === 404) {
-        // Backend doesn't provide container -> treat as empty
-        if (import.meta.env.DEV) console.debug("[Chapter] container not found (404)", containerQuery);
-        isEmptyChapter = true;
-      } else {
-        console.error("[Chapter] Container fetch error:", containerErr, { containerQuery });
-        pageError = "Unable to load chapter items at the moment.";
-      }
-    }
-  }
+  const chapterData = await fetchAllChapterDohas();
+  chapterItems = chapterData.items;
+  total = chapterData.total;
+  isEmptyChapter = chapterItems.length === 0;
 } catch (err) {
   console.error("[Chapter] Unexpected error:", err);
   pageError = "Unexpected error while loading chapter.";
@@ -127,34 +91,7 @@ try {
     </div>
   )}
 
-  {leafContent && (
-    <article class="space-y-6 rounded-2xl border border-slate-700 bg-slate-900/55 p-5 md:p-7">
-      <header>
-        <p class="text-xs uppercase tracking-[0.2em] text-slate-400 mb-2">Chapter</p>
-        <h1 class="text-3xl font-serif leading-relaxed text-slate-100">{leafContent.title ?? leafContent.main_text ?? displayTitle}</h1>
-      </header>
-
-      {leafContent.main_text && (
-        <div class="prose text-slate-200">
-          <p>{leafContent.main_text}</p>
-        </div>
-      )}
-
-      {leafContent.meaning && (
-        <section class="rounded-xl border border-slate-700 bg-slate-950/50 p-4">
-          <h2 class="font-semibold text-slate-100 mb-2">Meaning</h2>
-          <p class="text-slate-300">{leafContent.meaning}</p>
-        </section>
-      )}
-
-      <footer class="text-sm text-slate-400 mt-6 border-t border-slate-700 pt-4">
-        {leafContent.version && <div>Version: {leafContent.version}</div>}
-        <a href={`/${encodeURIComponent(author)}/${encodeURIComponent(work)}`} class="inline-flex mt-2 text-cyan-300 hover:text-cyan-200">← Back to {safeDecode(work).replace(/-/g," ")}</a>
-      </footer>
-    </article>
-  )}
-
-  {!leafContent && isEmptyChapter && (
+  {isEmptyChapter && (
     <div class="rounded-2xl border border-slate-700 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
       <h1 class="text-3xl font-serif text-slate-100 mb-3">{displayTitle}</h1>
       <p class="text-slate-300 mb-5">There is no content in this chapter yet. You can check other chapters or return to the work page.</p>
@@ -165,15 +102,20 @@ try {
     </div>
   )}
 
-  {!leafContent && containerItems.length > 0 && (
+  {!isEmptyChapter && chapterItems.length > 0 && (
     <section class="rounded-2xl border border-slate-700 bg-slate-900/50 p-5 md:p-6">
       <h1 class="text-3xl font-serif text-slate-100 mb-5">{displayTitle}</h1>
+      <p class="text-sm text-slate-400 mb-4">Total verses: {total}</p>
       <ul class="space-y-3">
-        {containerItems.map((i) => {
-          const itemId = i && (i.id ?? i.pk ?? i._id);
-          const itemLabel = i && (i.title || i.main_text || i.hierarchy_path || `Item ${itemId}`);
+        {chapterItems.map((i, idx) => {
+          const itemId = i?.id;
+          const verseNumber = typeof i?.number_in_chapter === "number" ? i.number_in_chapter : idx + 1;
+          const itemLabel = i?.main_text || i?.hierarchy_path || `Verse ${verseNumber}`;
           return (
             <li class="rounded-lg border border-slate-700 bg-slate-950/45 px-4 py-3">
+              <div class="text-xs uppercase tracking-[0.16em] text-slate-400 mb-1">
+                Verse {verseNumber} of {total}
+              </div>
               {itemId ? (
                 <a href={`/doha/${encodeURIComponent(itemId)}`} class="text-slate-100 hover:text-cyan-300">
                   {String(itemLabel).slice(0, 180)}
