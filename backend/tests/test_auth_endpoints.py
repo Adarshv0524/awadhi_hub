@@ -2,7 +2,7 @@
 
 from app.auth.jwt import create_access_token, create_password_reset_token
 from app.auth.hash import hash_password, verify_password
-from app.db.models import User
+from app.db.models import User, OAuthAccount
 from app.core.permissions import Role, Permission
 
 
@@ -209,6 +209,79 @@ def test_forgot_password_returns_generic_success(client):
     body = r.json()
     assert body["ok"] is True
     assert "If an account exists" in body["message"]
+
+
+def test_google_login_redirect_sets_state_cookie(client, monkeypatch):
+    monkeypatch.setattr("app.api.v1.auth.settings.GOOGLE_CLIENT_ID", "test-google-client")
+    r = client.get("/auth/oauth/google/login?next=%2Fdashboard", follow_redirects=False)
+    assert r.status_code in (302, 307)
+    location = r.headers.get("location", "")
+    assert "accounts.google.com/o/oauth2/v2/auth" in location
+    assert "state=" in location
+    assert "redirect_uri=" in location
+    assert "set-cookie" in {k.lower() for k in r.headers.keys()}
+    assert "oauth_google_state=" in r.headers.get("set-cookie", "")
+
+
+def test_google_callback_redirects_to_frontend_and_links_existing_email(client, db, monkeypatch):
+    monkeypatch.setattr("app.api.v1.auth.settings.GOOGLE_CLIENT_ID", "test-google-client")
+    existing = User(
+        email="google-linked@example.com",
+        username="googlelinked",
+        password_hash=hash_password("SomePass123!"),
+        role=Role.REGISTERED,
+        is_active=True,
+        is_banned=False,
+    )
+    db.add(existing)
+    db.commit()
+    db.refresh(existing)
+
+    async def fake_exchange(code: str):
+        return {"access_token": "google-access-token"}
+
+    async def fake_profile(access_token: str):
+        return {
+            "sub": "google-sub-123",
+            "email": "google-linked@example.com",
+        }
+
+    monkeypatch.setattr("app.api.v1.auth.exchange_code_for_tokens", fake_exchange)
+    monkeypatch.setattr("app.api.v1.auth.fetch_google_profile", fake_profile)
+
+    start = client.get("/auth/oauth/google/login?next=%2Fdashboard", follow_redirects=False)
+    cookie_header = start.headers.get("set-cookie", "")
+    cookie_value = cookie_header.split("oauth_google_state=")[1].split(";")[0]
+
+    cb = client.get(
+        f"/auth/oauth/google/callback?code=abc&state={cookie_value}.%2Fdashboard",
+        cookies={"oauth_google_state": cookie_value},
+        follow_redirects=False,
+    )
+    assert cb.status_code in (302, 307)
+    location = cb.headers.get("location", "")
+    assert "/oauth/callback#" in location
+    assert "access_token=" in location
+    assert "refresh_token=" in location
+    assert "next=%2Fdashboard" in location
+
+    oauth = (
+        db.query(OAuthAccount)
+        .filter(OAuthAccount.provider == "google", OAuthAccount.provider_user_id == "google-sub-123")
+        .first()
+    )
+    assert oauth is not None
+    assert oauth.user_id == existing.id
+
+
+def test_google_callback_rejects_invalid_state(client):
+    cb = client.get(
+        "/auth/oauth/google/callback?code=abc&state=wrong.%2F",
+        cookies={"oauth_google_state": "different"},
+        follow_redirects=False,
+    )
+    assert cb.status_code in (302, 307)
+    assert "oauth_error=invalid_state" in cb.headers.get("location", "")
 
 
 def test_reset_password_with_valid_token_updates_password(client, db):

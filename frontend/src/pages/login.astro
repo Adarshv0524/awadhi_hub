@@ -44,18 +44,30 @@ export const prerender = false;
 
       <p id="login-error" class="text-sm text-red-600 hidden"></p>
 
+      <div class="relative my-4">
+        <div class="absolute inset-0 flex items-center">
+          <span class="w-full border-t border-gray-700"></span>
+        </div>
+        <div class="relative flex justify-center text-xs uppercase">
+          <span class="bg-slate-900 px-2 text-gray-400">or</span>
+        </div>
+      </div>
+
+      <button
+        id="google-login-btn"
+        type="button"
+        class="w-full border border-gray-600 text-white py-2 rounded hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+      >
+        <svg class="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.2-1.4 3.6-5.5 3.6-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.2.8 3.9 1.5l2.7-2.6C17 3 14.7 2 12 2 6.9 2 2.8 6.1 2.8 11.2S6.9 20.4 12 20.4c6.9 0 9.2-4.8 9.2-7.2 0-.5 0-.8-.1-1.2H12z"/>
+        </svg>
+        Sign in with Google
+      </button>
+
       <p class="text-sm text-gray-400 text-center">
         New here?
         <a href="/register" class="text-blue-500 hover:underline">Create an account</a>
       </p>
-      
-      <!-- TODO: Implement Google OAuth -->
-      <!-- <div class="mt-4">
-        <button type="button" class="w-full border border-gray-600 text-white py-2 rounded hover:bg-gray-800 transition-colors flex items-center justify-center gap-2">
-          <svg class="w-5 h-5" viewBox="0 0 24 24">Google Icon</svg>
-          Sign in with Google
-        </button>
-      </div> -->
     </form>
   </div>
 
@@ -76,6 +88,28 @@ export const prerender = false;
       if (params.get('session_expired') === '1') {
         errorEl.textContent = 'Session expired. Please login again.';
         errorEl.classList.remove('hidden');
+      }
+      const oauthError = params.get('oauth_error');
+      if (oauthError) {
+        const messages: Record<string, string> = {
+          missing_code: 'Google login was canceled or failed to return an authorization code.',
+          missing_state: 'Google login failed due to missing security state.',
+          invalid_state: 'Google login failed security checks. Please try again.',
+          token_exchange_failed: 'Could not complete Google login. Please try again.',
+          profile_fetch_failed: 'Could not fetch your Google profile. Please try again.',
+          incomplete_profile: 'Google account did not provide required profile information.',
+        };
+        errorEl.textContent = messages[oauthError] || 'Google login failed. Please try again.';
+        errorEl.classList.remove('hidden');
+      }
+
+      const googleBtn = document.getElementById('google-login-btn') as HTMLButtonElement | null;
+      if (googleBtn) {
+        googleBtn.addEventListener('click', () => {
+          const API_BASE = import.meta.env.PUBLIC_API_BASE || "http://localhost:8000";
+          const next = params.get('next') || '/';
+          window.location.href = `${API_BASE}/auth/oauth/google/login?next=${encodeURIComponent(next)}`;
+        });
       }
 
       form.addEventListener("submit", async (e) => {

@@ -1,0 +1,70 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+export const prerender = false;
+---
+
+<BaseLayout title="Signing In · Awadhi New" noindex>
+  <meta name="robots" content="noindex,nofollow" />
+
+  <div class="max-w-md mx-auto mt-16 px-4 text-center">
+    <div class="inline-block animate-spin rounded-full h-10 w-10 border-4 border-cyan-500 border-t-transparent"></div>
+    <h1 class="text-2xl font-serif mt-5">Completing Sign-In</h1>
+    <p id="status" class="text-slate-300 mt-3">Please wait while we finish your Google login...</p>
+    <p id="error" class="text-sm text-red-500 mt-4 hidden"></p>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", async () => {
+      const statusEl = document.getElementById("status");
+      const errorEl = document.getElementById("error");
+
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      const queryParams = new URLSearchParams(window.location.search);
+
+      const accessToken = hashParams.get("access_token") || queryParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token") || queryParams.get("refresh_token");
+      const next = hashParams.get("next") || queryParams.get("next") || "/";
+
+      if (!accessToken || !refreshToken) {
+        if (statusEl) statusEl.textContent = "Google sign-in could not be completed.";
+        if (errorEl) {
+          errorEl.textContent = "Missing login tokens from OAuth callback.";
+          errorEl.classList.remove("hidden");
+        }
+        window.setTimeout(() => {
+          window.location.href = "/login?oauth_error=token_exchange_failed";
+        }, 1200);
+        return;
+      }
+
+      try {
+        localStorage.setItem("awadhi_access_token", accessToken);
+        localStorage.setItem("awadhi_refresh_token", refreshToken);
+
+        const API_BASE = import.meta.env.PUBLIC_API_BASE || "http://localhost:8000";
+        const meRes = await fetch(API_BASE + "/auth/me", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+
+        if (meRes.ok) {
+          const me = await meRes.json();
+          localStorage.setItem("awadhi_user_cache", JSON.stringify(me));
+        }
+
+        const safeNext = next.startsWith("/") ? next : "/";
+        if (statusEl) statusEl.textContent = "Signed in successfully. Redirecting...";
+        window.location.href = safeNext;
+      } catch (err) {
+        console.error("[oauth/callback] Failed to complete sign in", err);
+        if (statusEl) statusEl.textContent = "Google sign-in failed.";
+        if (errorEl) {
+          errorEl.textContent = "Could not store session details. Please try again.";
+          errorEl.classList.remove("hidden");
+        }
+        window.setTimeout(() => {
+          window.location.href = "/login?oauth_error=token_exchange_failed";
+        }, 1200);
+      }
+    });
+  </script>
+</BaseLayout>

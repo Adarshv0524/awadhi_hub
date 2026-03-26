@@ -1,9 +1,12 @@
 # app/api/v1/auth.py
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
+import secrets
+
+from fastapi.responses import RedirectResponse
 
 from app.db.session import get_db
 from app.db.models import User, RefreshToken, OAuthAccount
@@ -44,6 +47,14 @@ class ForgotPasswordIn(BaseModel):
 class ResetPasswordIn(BaseModel):
     token: str
     new_password: str
+
+
+def _frontend_oauth_callback_url() -> str:
+    return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/oauth/callback"
+
+
+def _frontend_login_url() -> str:
+    return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/login"
 
 
 @router.post("/register")
@@ -180,19 +191,83 @@ def me(current_user: User = Depends(get_current_user)):
     }
 
 
+@router.get("/oauth/google/login")
+def google_login(next: str = Query("/")):
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=500, detail="Google OAuth is not configured")
+
+    safe_next = next if next.startswith("/") else "/"
+    state = secrets.token_urlsafe(24)
+    packed_state = f"{state}.{safe_next}"
+
+    auth_url = (
+        "https://accounts.google.com/o/oauth2/v2/auth?"
+        + urlencode(
+            {
+                "client_id": settings.GOOGLE_CLIENT_ID,
+                "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+                "response_type": "code",
+                "scope": "openid email profile",
+                "state": packed_state,
+                "access_type": "online",
+                "prompt": "select_account",
+            }
+        )
+    )
+
+    response = RedirectResponse(url=auth_url, status_code=302)
+    response.set_cookie(
+        key="oauth_google_state",
+        value=state,
+        httponly=True,
+        secure=settings.APP_ENV == "production",
+        samesite="lax",
+        max_age=600,
+    )
+    return response
+
+
 @router.get("/oauth/google/callback")
-async def google_callback(code: str | None = None, state: str | None = None, db: Session = Depends(get_db)):
+async def google_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+):
     if not code:
-        raise HTTPException(status_code=400, detail="Missing code")
-    token_resp = await exchange_code_for_tokens(code)
+        return RedirectResponse(url=f"{_frontend_login_url()}?oauth_error=missing_code", status_code=302)
+    if not state:
+        return RedirectResponse(url=f"{_frontend_login_url()}?oauth_error=missing_state", status_code=302)
+
+    try:
+        expected_state, next_path = state.split(".", 1)
+    except Exception:
+        return RedirectResponse(url=f"{_frontend_login_url()}?oauth_error=invalid_state", status_code=302)
+
+    cookie_state = request.cookies.get("oauth_google_state")
+    if not cookie_state or cookie_state != expected_state:
+        return RedirectResponse(url=f"{_frontend_login_url()}?oauth_error=invalid_state", status_code=302)
+
+    redirect_target = next_path if next_path.startswith("/") else "/"
+
+    try:
+        token_resp = await exchange_code_for_tokens(code)
+    except Exception:
+        return RedirectResponse(url=f"{_frontend_login_url()}?oauth_error=token_exchange_failed", status_code=302)
+
     access_token = token_resp.get("access_token")
     if not access_token:
-        raise HTTPException(status_code=400, detail="Failed to obtain access token from provider")
-    profile = await fetch_google_profile(access_token)
+        return RedirectResponse(url=f"{_frontend_login_url()}?oauth_error=token_exchange_failed", status_code=302)
+
+    try:
+        profile = await fetch_google_profile(access_token)
+    except Exception:
+        return RedirectResponse(url=f"{_frontend_login_url()}?oauth_error=profile_fetch_failed", status_code=302)
+
     provider_user_id = profile.get("sub")
     email = profile.get("email")
     if not provider_user_id or not email:
-        raise HTTPException(status_code=400, detail="Incomplete profile from provider")
+        return RedirectResponse(url=f"{_frontend_login_url()}?oauth_error=incomplete_profile", status_code=302)
 
     oauth = db.query(OAuthAccount).filter(
         OAuthAccount.provider == "google",
@@ -220,9 +295,14 @@ async def google_callback(code: str | None = None, state: str | None = None, db:
     expires_at = datetime.utcnow() + timedelta(seconds=int(settings.JWT_REFRESH_TOKEN_EXPIRES_SECONDS))
     db.add(RefreshToken(token=refresh, user_id=user.id, expires_at=expires_at))
     db.commit()
-    return {
-        "access_token": access,
-        "refresh_token": refresh,
-        "token_type": "bearer",
-        "user": {"id": user.id, "email": user.email},
-    }
+
+    fragment = urlencode(
+        {
+            "access_token": access,
+            "refresh_token": refresh,
+            "next": redirect_target,
+        }
+    )
+    response = RedirectResponse(url=f"{_frontend_oauth_callback_url()}#{fragment}", status_code=302)
+    response.delete_cookie("oauth_google_state")
+    return response
