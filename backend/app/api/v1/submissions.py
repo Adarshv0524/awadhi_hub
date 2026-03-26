@@ -37,6 +37,11 @@ class SubmissionUpdateIn(BaseModel):
     external_references: Optional[Dict[str, Any]] = None  # ✅ Changed from "references"
     visibility: Optional[str] = Field(None, max_length=20)
     submit_for_review: Optional[bool] = None
+    author_slug: Optional[str] = None
+    work_slug: Optional[str] = None
+    chapter_slug: Optional[str] = None
+    number_in_chapter: Optional[int] = None
+    is_classical: Optional[bool] = None
     expected_version: int
 
 class SubmissionOut(BaseModel):
@@ -144,6 +149,27 @@ def _ensure_user_can_edit_submission(user: User, submission: Submission):
         )
 
 
+METADATA_UPDATE_FIELDS = {
+    "author_slug",
+    "work_slug",
+    "chapter_slug",
+    "number_in_chapter",
+    "is_classical",
+}
+
+
+def _ensure_can_update_submission(user: User, submission: Submission, metadata_touched: bool):
+    if role_at_least(user.role, Role.MODERATOR):
+        return
+
+    _ensure_user_can_edit_submission(user, submission)
+    if metadata_touched:
+        raise HTTPException(
+            status_code=403,
+            detail="Only moderator/admin users can edit hierarchy metadata",
+        )
+
+
 # --------- Endpoints ---------
 
 _submission_rl = rate_limit_dependency(action_key="submission_create", limit=20, window_seconds=86400, granularity=3600)
@@ -238,13 +264,31 @@ def update_submission(
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
 
-    _ensure_user_can_edit_submission(current_user, sub)
+    payload = data.model_dump(exclude_unset=True) if hasattr(data, "model_dump") else data.dict(exclude_unset=True)
+    metadata_touched = any(field in payload for field in METADATA_UPDATE_FIELDS)
+    _ensure_can_update_submission(current_user, sub, metadata_touched)
 
     # optimistic locking
     if sub.version != data.expected_version:
         raise HTTPException(
             status_code=409,
             detail=f"Version conflict. Current version is {sub.version}",
+        )
+
+    if metadata_touched:
+        new_is_classical = payload.get("is_classical", sub.is_classical)
+        new_author_slug = payload.get("author_slug", sub.author_slug)
+        new_work_slug = payload.get("work_slug", sub.work_slug)
+        new_chapter_slug = payload.get("chapter_slug", sub.chapter_slug)
+        new_number_in_chapter = payload.get("number_in_chapter", sub.number_in_chapter)
+
+        _validate_classical_reference(
+            db,
+            new_is_classical,
+            new_author_slug,
+            new_work_slug,
+            new_chapter_slug,
+            new_number_in_chapter,
         )
 
     if data.main_text is not None:
@@ -255,6 +299,16 @@ def update_submission(
         sub.external_references = data.external_references
     if data.visibility is not None:
         sub.visibility = data.visibility
+    if data.author_slug is not None:
+        sub.author_slug = data.author_slug
+    if data.work_slug is not None:
+        sub.work_slug = data.work_slug
+    if data.chapter_slug is not None:
+        sub.chapter_slug = data.chapter_slug
+    if data.number_in_chapter is not None:
+        sub.number_in_chapter = data.number_in_chapter
+    if data.is_classical is not None:
+        sub.is_classical = data.is_classical
 
     if data.submit_for_review is True:
         sub.status = "pending_review"

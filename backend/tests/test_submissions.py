@@ -267,3 +267,115 @@ def test_delete_submission_soft_delete(client, db):
     assert r.status_code == 200
     items = r.json()
     assert all(s["id"] != sub_id for s in items)
+
+
+def test_moderator_can_update_hierarchy_metadata_inline(client, db):
+    _, _, _, author_slug, work_slug, chapter_slug = create_hierarchy_for_classical(db)
+
+    contributor = create_user(db, "s7@example.com", Role.REGISTERED, "s7")
+    moderator = create_user(db, "s7mod@example.com", Role.MODERATOR, "s7mod")
+    contributor_token = create_access_token(contributor.id)
+    moderator_token = create_access_token(moderator.id)
+
+    created = client.post(
+        "/submissions",
+        headers={"Authorization": f"Bearer {contributor_token}"},
+        json={
+            "content_type": "doha",
+            "main_text": "inline metadata change",
+            "meaning": "m",
+            "is_classical": True,
+            "author_slug": author_slug,
+            "work_slug": work_slug,
+            "chapter_slug": chapter_slug,
+            "number_in_chapter": 5,
+            "submit_for_review": True,
+        },
+    )
+    assert created.status_code == 200
+    sub = created.json()
+
+    updated = client.put(
+        f"/submissions/{sub['id']}",
+        headers={"Authorization": f"Bearer {moderator_token}"},
+        json={
+            "number_in_chapter": 7,
+            "expected_version": sub["version"],
+        },
+    )
+    assert updated.status_code == 200
+    body = updated.json()
+    assert body["number_in_chapter"] == 7
+
+    persisted = db.query(Submission).filter(Submission.id == sub["id"]).first()
+    assert persisted is not None
+    assert persisted.number_in_chapter == 7
+
+
+def test_regular_user_cannot_update_hierarchy_metadata_inline(client, db):
+    _, _, _, author_slug, work_slug, chapter_slug = create_hierarchy_for_classical(db)
+
+    contributor = create_user(db, "s8@example.com", Role.REGISTERED, "s8")
+    token = create_access_token(contributor.id)
+
+    created = client.post(
+        "/submissions",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "content_type": "doha",
+            "main_text": "metadata forbidden",
+            "meaning": "m",
+            "is_classical": True,
+            "author_slug": author_slug,
+            "work_slug": work_slug,
+            "chapter_slug": chapter_slug,
+            "number_in_chapter": 3,
+            "submit_for_review": False,
+        },
+    )
+    assert created.status_code == 200
+    sub = created.json()
+
+    attempt = client.put(
+        f"/submissions/{sub['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "work_slug": "unauthorized-change",
+            "expected_version": sub["version"],
+        },
+    )
+    assert attempt.status_code == 403
+    assert "Only moderator/admin" in attempt.json()["detail"]
+
+
+def test_regular_user_text_update_still_works_without_metadata(client, db):
+    contributor = create_user(db, "s9@example.com", Role.REGISTERED, "s9")
+    token = create_access_token(contributor.id)
+
+    created = client.post(
+        "/submissions",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "content_type": "doha",
+            "main_text": "original text",
+            "meaning": "original meaning",
+            "is_classical": False,
+            "submit_for_review": False,
+        },
+    )
+    assert created.status_code == 200
+    sub = created.json()
+
+    updated = client.put(
+        f"/submissions/{sub['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "main_text": "updated text",
+            "meaning": "updated meaning",
+            "expected_version": sub["version"],
+        },
+    )
+    assert updated.status_code == 200
+    body = updated.json()
+    assert body["main_text"] == "updated text"
+    assert body["meaning"] == "updated meaning"
