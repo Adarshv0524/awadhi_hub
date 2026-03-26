@@ -9,13 +9,16 @@ import CopyButton from "../../components/content/CopyButton.svelte";
 import StructuredData from "../../components/StructuredData.astro";
 import TrustSignals from "../../components/content/TrustSignals.svelte";
 import ModerationInfo from "../../components/content/ModerationInfo.svelte";
+import NavigationControls from "../../components/content/NavigationControls.svelte";
 
 const { id } = Astro.params;
 
 let entry: any = null;
+let navigation: any = null;
 
 try {
   entry = await api(`/dictionary/${id}`);
+  navigation = entry?.navigation ?? null;
 } catch (e) {
   if (e instanceof ApiError && e.status === 404) {
     return Astro.redirect("/404");
@@ -75,6 +78,18 @@ const entryUrl = `${baseUrl}/dictionary/${id}`;
     </nav>
 
     <article class="space-y-8">
+      {navigation && (navigation.previous?.id || navigation.previous?.href || navigation.next?.id || navigation.next?.href) && (
+        <NavigationControls
+          client:load
+          previousId={navigation.previous?.id}
+          nextId={navigation.next?.id}
+          previousHref={navigation.previous?.href}
+          nextHref={navigation.next?.href}
+          previousText={navigation.previous?.short_text}
+          nextText={navigation.next?.short_text}
+        />
+      )}
+
       <!-- Trust Signals -->
       <div class="flex justify-center">
         <TrustSignals 
@@ -117,7 +132,9 @@ const entryUrl = `${baseUrl}/dictionary/${id}`;
           client:only="svelte"
           contentType="dictionary"
           contentId={entry.id}
+          content={entry}
           likes={entry?.likes_count ?? 0}
+          views={entry?.views_count ?? 0}
           bookmarks={entry?.bookmarks_count ?? 0}
           shares={entry?.shares_count ?? 0}
         />

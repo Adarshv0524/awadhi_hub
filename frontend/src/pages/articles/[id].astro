@@ -9,13 +9,16 @@ import CopyButton from "../../components/content/CopyButton.svelte";
 import StructuredData from "../../components/StructuredData.astro";
 import TrustSignals from "../../components/content/TrustSignals.svelte";
 import ModerationInfo from "../../components/content/ModerationInfo.svelte";
+import NavigationControls from "../../components/content/NavigationControls.svelte";
 
 const { id } = Astro.params;
 
 let article: any = null;
+let navigation: any = null;
 
 try {
   article = await api(`/articles/${id}`);
+  navigation = article?.navigation ?? null;
 } catch (e) {
   if (e instanceof ApiError && e.status === 404) {
     return Astro.redirect("/404");
@@ -79,6 +82,18 @@ const articleUrl = `${baseUrl}/articles/${id}`;
     </nav>
 
     <article class="space-y-8">
+      {navigation && (navigation.previous?.id || navigation.previous?.href || navigation.next?.id || navigation.next?.href) && (
+        <NavigationControls
+          client:load
+          previousId={navigation.previous?.id}
+          nextId={navigation.next?.id}
+          previousHref={navigation.previous?.href}
+          nextHref={navigation.next?.href}
+          previousText={navigation.previous?.short_text}
+          nextText={navigation.next?.short_text}
+        />
+      )}
+
       <!-- Trust Signals -->
       <div class="flex justify-center">
         <TrustSignals 
@@ -120,7 +135,9 @@ const articleUrl = `${baseUrl}/articles/${id}`;
           client:only="svelte"
           contentType="article"
           contentId={article.id}
+          content={article}
           likes={article?.likes_count ?? 0}
+          views={article?.views_count ?? 0}
           bookmarks={article?.bookmarks_count ?? 0}
           shares={article?.shares_count ?? 0}
         />
