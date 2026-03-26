@@ -20,7 +20,7 @@ def upgrade():
         sa.Column("key", sa.String(255), primary_key=True, nullable=False),
         sa.Column("value", sa.JSON(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
     )
     op.create_index("ix_system_settings_key", "system_settings", ["key"])
 

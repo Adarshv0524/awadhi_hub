@@ -592,10 +592,29 @@ op.alter_column('alembic_version', 'version_num',
                 type_=VARCHAR(255))
 ```
 
-**Lesson Learned**: Schema drift prevention requires:
-1. **Pre-migration Testing**: Run migrations against clean DB in CI
-2. **Schema Contract Validation**: Compare ORM metadata vs migration output
-3. **Regression Marking**: Document drift in migration docstrings
+### 4.3 Database Integrity Guardrail (CI Enforced)
+
+The repository now includes a schema contract guardrail that blocks merges when ORM metadata and migration-produced schema diverge.
+
+Implementation:
+- `backend/scripts/schema_contract_check.py`
+- CI step: `Schema Contract Check` in `.github/workflows/test.yml`
+
+Contract scope:
+1. Build expected schema from `app.db.models.Base.metadata`
+2. Apply `alembic upgrade head` to a temporary SQLite database
+3. Inspect physical schema with SQLAlchemy inspector
+4. Compare table/column presence, normalized type affinity, and nullability
+5. Fail with a detailed diff and non-zero exit status on mismatch
+
+### 4.4 Lessons Learned from DATA-001
+
+Historical schema drift caused runtime faults when model and migration column names diverged (`references` vs `external_references`, `key` vs `setting_key`).
+
+Permanent safeguards now in place:
+1. **Pre-migration Testing**: Migration smoke checks against a clean database
+2. **Schema Contract Validation**: CI-enforced metadata-vs-migration comparison
+3. **Regression Documentation**: Drift incidents archived in architecture/changelog context
 
 ---
 

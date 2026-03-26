@@ -61,108 +61,6 @@ Blocked by [LOGICAL-003]: Navigation API not yet implemented for other content t
 
 ## 3. DATA STRUCTURE ISSUES (Schema Alignment & Design)
 
-### [DATA-001] Schema Drift Previously Caused Runtime 500s
-
-**Severity**: HIGH (RESOLVED)  
-**Status**: 🟢 RESOLVED (Migration 0014)  
-
-#### Problem (Historical)
-
-Model expected `external_references`, but migration created `references`:
-
-```python
-# Model (correct)
-class Submission(Base):
-    external_references = Column(JSON)
-
-# Migration 0004 (wrong)
-op.add_column('submissions', sa.Column('references', sa.JSON()))
-```
-
-Runtime error: `Unknown column 'submissions.external_references'`
-
-**Similarly** for system_settings:
-- Model: `setting_key`
-- Migration: `key`
-
-#### Resolution
-
-Migration 0014 reconciled the drift:
-
-```python
-op.alter_column('submissions', 'references', new_column_name='external_references')
-op.alter_column('system_settings', 'key', new_column_name='setting_key')
-op.alter_column('alembic_version', 'version_num', existing_type=VARCHAR(32), type_=VARCHAR(255))
-```
-
-#### Preventive Measures Needed
-
-See [OPTIMIZATION-001]: Add schema contract CI check.
-
----
-
-### [DATA-002] No CI Guardrails for Model/Migration Drift
-
-**Severity**: HIGH  
-**Impact**: Drift can recur silently; caught only at runtime in production  
-**Status**: 🔴 NOT STARTED  
-
-#### Problem
-
-No automated check validates that:
-1. Migration column names match ORM class attributes
-2. Migration column types match ORM column types
-3. Foreign key constraints match relationships
-
-#### Solution
-
-Create `scripts/schema_contract_check.py`:
-
-```python
-#!/usr/bin/env python
-"""Validate schema coherence between ORM and migrations."""
-
-from sqlalchemy import inspect, Column, String, Integer, Text, Boolean, DateTime
-from app.db.models import Base
-
-def get_orm_schema():
-    """Extract column metadata from SQLAlchemy models."""
-    schema = {}
-    for table in Base.metadata.tables.values():
-        schema[table.name] = {
-            col.name: {
-                'type': str(col.type),
-                'nullable': col.nullable,
-                'primary_key': col.primary_key,
-            }
-            for col in table.columns
-        }
-    return schema
-
-def run_against_test_db():
-    """Upgrade migrations on clean test DB, compare schema."""
-    # Create in-memory SQLite
-    # Run alembic upgrade head
-    # Inspect actual schema
-    # Compare to ORM schema
-    # Report mismatches
-    pass
-```
-
-### Add to CI Pipeline (`.github/workflows/test.yml`):
-
-```yaml
-- name: Schema Contract Check
-  run: python scripts/schema_contract_check.py
-```
-
-#### Effort
-- Implementation: 3 hours
-- CI integration: 1 hour
-
-#### Priority
-**MEDIUM-HIGH** – Prevents future production incidents.
-
 ---
 
 ## 4. OPTIMIZATION ISSUES (Query & Performance)
@@ -723,8 +621,6 @@ def get_user_stats(username: str, db: Session = Depends(get_db)):
 | Issue ID | Severity | Type | Status | Effort |
 |----------|----------|------|--------|--------|
 | STYLING-003 | LOW | Styling | 🟡 | Blocked by LOGICAL-003 |
-| DATA-001 | HIGH | Data | 🟢 | N/A |
-| DATA-002 | HIGH | Data | 🔴 | 4h |
 | OPTIMIZATION-001 | MEDIUM | Optimization | 🔴 | 0.5h |
 | OPTIMIZATION-002 | LOW | Optimization | 🔴 | N/A |
 | LOGICAL-001 | HIGH | Logical | 🔴 | 6h |

@@ -1,0 +1,61 @@
+name: Test
+
+on:
+  pull_request:
+    paths:
+      - backend/**
+      - .github/workflows/**
+  push:
+    branches:
+      - main
+    paths:
+      - backend/**
+      - .github/workflows/**
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      APP_ENV: test
+      JWT_SECRET_KEY: ci-test-secret
+      FRONTEND_BASE_URL: http://localhost:4321
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+      MYSQL_DATABASE: awadhi_ci
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: awadhi_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Schema Contract Check
+        run: python backend/scripts/schema_contract_check.py
+
+      - name: Run backend tests
+        run: pytest backend/tests -q

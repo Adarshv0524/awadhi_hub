@@ -24,7 +24,7 @@ def upgrade():
         sa.Column("likes_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("shares_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("weight_score", sa.Float(), nullable=False, server_default="0"),
-        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("content_type", "content_id", name="uq_engagement_content"),
     )
     op.create_index("ix_engagement_content", "engagement_kpis", ["content_type", "content_id"])

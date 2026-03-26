@@ -33,7 +33,7 @@ def upgrade():
         sa.Column("visibility", sa.String(20), nullable=False, server_default="public"),
         sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
     )
     op.create_index("ix_dictionary_lemma_devanagari", "dictionary_entries", ["lemma_devanagari"])
     op.create_index("ix_dictionary_lemma_roman", "dictionary_entries", ["lemma_roman"])
@@ -63,7 +63,7 @@ def upgrade():
         sa.Column("visibility", sa.String(20), nullable=False, server_default="public"),
         sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
     )
     op.create_index("ix_idiom_text_roman_norm", "idiom_entries", ["text_roman_norm"])
     try:
@@ -88,7 +88,7 @@ def upgrade():
         sa.Column("visibility", sa.String(20), nullable=False, server_default="public"),
         sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
     )
     op.create_index("ix_article_title_roman_norm", "article_entries", ["title_roman_norm"])
     try:

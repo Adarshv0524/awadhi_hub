@@ -25,8 +25,8 @@ def upgrade():
         sa.Column('permission_scopes', sa.JSON(), nullable=True),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.text('1')),
         sa.Column('is_banned', sa.Boolean(), nullable=False, server_default=sa.text('0')),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP()')),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP()'), onupdate=sa.text('CURRENT_TIMESTAMP()')),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP')),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), onupdate=sa.text('CURRENT_TIMESTAMP')),
         sa.Column('last_login', sa.DateTime(timezone=True), nullable=True),
         sa.UniqueConstraint('email', name='uq_users_email'),
         sa.UniqueConstraint('username', name='uq_users_username')
@@ -40,7 +40,7 @@ def upgrade():
         sa.Column('token', sa.String(length=512), nullable=False),
         sa.Column('user_id', sa.Integer(), nullable=False),  # CHANGED
         sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP()')),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP')),
         sa.UniqueConstraint('token', name='uq_refresh_token')
     )
     op.create_index('ix_refresh_tokens_token', 'refresh_tokens', ['token'])
@@ -53,7 +53,7 @@ def upgrade():
         sa.Column('provider_user_id', sa.String(length=255), nullable=False),
         sa.Column('user_id', sa.Integer(), nullable=False),  # CHANGED
         sa.Column('raw_profile', sa.JSON(), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP()')),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP')),
         sa.UniqueConstraint('provider', 'provider_user_id', name='uq_provider_user')
     )
     op.create_index('ix_oauth_provider_user', 'oauth_accounts', ['provider', 'provider_user_id'])

@@ -23,7 +23,7 @@ def upgrade():
         sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
         sa.Column("interaction_metadata", sa.JSON(), nullable=True),  # UPDATED: renamed from metadata
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("user_id", "content_type", "content_id", "interaction_type", name="uq_user_interaction"),
     )
     op.create_index("ix_user_interactions_user_id", "user_interactions", ["user_id"])
@@ -56,7 +56,7 @@ def upgrade():
         sa.Column("report_metadata", sa.JSON(), nullable=True),  # UPDATED: renamed from metadata
         sa.Column("status", sa.String(20), nullable=False, server_default="open"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
     )
     op.create_index("ix_reports_user_id", "reports", ["user_id"])
     op.create_index("ix_reports_content_type", "reports", ["content_type"])

@@ -28,9 +28,9 @@ class User(Base):
     role = Column(String(50), default="registered", nullable=False)
     permissions = Column(Integer, default=0, nullable=False)
     permission_scopes = Column(JSON, nullable=True)
-    is_active = Column(Boolean, default=True)
-    is_banned = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_banned = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     last_login = Column(DateTime(timezone=True), nullable=True)
 
@@ -67,8 +67,8 @@ class ClassicalAuthor(Base):
     long_bio = Column(Text, nullable=True)
     language = Column(String(50), nullable=True)
     is_deleted = Column(Boolean, nullable=False, server_default="0")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     works = relationship("ClassicalWork", back_populates="author")
 class ClassicalWork(Base):
     """Classical literary works (books, poetry collections)."""
@@ -81,8 +81,8 @@ class ClassicalWork(Base):
     work_type = Column(String(50), nullable=True)
     original_script = Column(String(50), nullable=True)
     is_deleted = Column(Boolean, nullable=False, server_default="0")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     author = relationship("ClassicalAuthor", back_populates="works")
     chapters = relationship("WorkChapter", back_populates="work")
     __table_args__ = (
@@ -97,8 +97,8 @@ class WorkChapter(Base):
     title = Column(String(255), nullable=False)
     number = Column(Integer, nullable=False)
     is_deleted = Column(Boolean, nullable=False, server_default="0")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     work = relationship("ClassicalWork", back_populates="chapters")
     __table_args__ = (
         UniqueConstraint("work_id", "slug", name="uq_chapters_work_slug"),
@@ -127,7 +127,7 @@ class Submission(Base):
     assigned_moderator_id = Column(Integer, nullable=True, index=True)
     priority = Column(Integer, nullable=False, server_default="0")
     is_deleted = Column(Boolean, nullable=False, server_default="0")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 class ModerationGuideline(Base):
     """Versioned moderation guidelines for content approval."""
@@ -179,8 +179,8 @@ class DohaEntry(Base):
     verified_by = Column(Integer, nullable=True)
     verified_at = Column(DateTime(timezone=True), nullable=True)
     is_deleted = Column(Boolean, nullable=False, server_default="0")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     engagement_kpi = relationship(
         "EngagementKPI",
         primaryjoin="and_(EngagementKPI.content_type=='doha', foreign(EngagementKPI.content_id)==DohaEntry.id)",
@@ -301,8 +301,8 @@ class UserInteraction(Base):
     interaction_type = Column(String(50), nullable=False)  # 'like' | 'bookmark'
     is_active = Column(Boolean, nullable=False, server_default="1")  # toggle on/off (soft delete)
     interaction_metadata = Column(JSON, nullable=True)  # ip_address, user_agent, etc.
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     __table_args__ = (
         UniqueConstraint("user_id", "content_type", "content_id", "interaction_type", name="uq_user_interaction"),
         Index("ix_user_interaction_user_content", "user_id", "content_type", "content_id"),
@@ -378,9 +378,9 @@ class AuditLog(Base):
     action = Column(String(100), nullable=False, index=True)
     resource_type = Column(String(50), nullable=True, index=True)
     resource_id = Column(Integer, nullable=True, index=True)
-    audit_before = Column(JSON, nullable=True)
+    audit_before = Column("before", JSON, nullable=True)
     after = Column(JSON, nullable=True)
-    audit_metadata = Column(JSON, nullable=True)
+    audit_metadata = Column("metadata", JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     __table_args__ = (
         Index("ix_audit_created_at", "created_at"),

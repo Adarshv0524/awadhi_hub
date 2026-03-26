@@ -24,7 +24,7 @@ def upgrade():
         sa.Column("count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("granularity", sa.Integer(), nullable=False, server_default="60"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.UniqueConstraint("user_id", "ip_address", "action_key", "time_bucket_start", name="uq_rate_limit_bucket"),
     )
     op.create_index("ix_rl_action_bucket", "rate_limit_counters", ["action_key", "time_bucket_start"])

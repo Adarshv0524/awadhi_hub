@@ -20,7 +20,10 @@ target_metadata = Base.metadata
 
 # set SQLAlchemy URL from environment (compose from .env)
 from app.core.settings import settings
-config.set_main_option("sqlalchemy.url", settings.mysql_url)
+config.set_main_option(
+    "sqlalchemy.url",
+    os.getenv("ALEMBIC_DATABASE_URL", settings.mysql_url),
+)
 
 def run_migrations_offline():
     url = config.get_main_option("sqlalchemy.url")
