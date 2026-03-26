@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 
 from app.db.session import get_db
-from app.db.models import ArticleEntry, EngagementKPI
+from app.db.models import ArticleEntry, EngagementKPI, User
 from app.core.security import get_current_user, require_role
 from app.core.permissions import Role
 
@@ -64,9 +64,14 @@ class ArticleListOut(BaseModel):
     title_devanagari: Optional[str]
     title_roman: Optional[str]
     excerpt: Optional[str]
+    author_name: Optional[str]
     tags: Optional[List[str]]
     version: int
     created_at: Optional[str]
+    views_count: int = 0
+    likes_count: int = 0
+    shares_count: int = 0
+    bookmarks_count: int = 0
     
     class Config:
         from_attributes = True
@@ -80,6 +85,7 @@ class ArticleDetailOut(BaseModel):
     body: str
     excerpt: Optional[str]
     author_id: Optional[int]
+    author_name: Optional[str]
     tags: Optional[List[str]]
     contributor_id: Optional[int]
     source_submission_id: Optional[int]
@@ -87,6 +93,10 @@ class ArticleDetailOut(BaseModel):
     version: int
     created_at: Optional[str]
     updated_at: Optional[str]
+    views_count: int = 0
+    likes_count: int = 0
+    shares_count: int = 0
+    bookmarks_count: int = 0
     
     class Config:
         from_attributes = True
@@ -95,6 +105,37 @@ class ArticleStatsOut(BaseModel):
     total_articles: int
     by_tag: dict
     recent_count: int
+
+
+def _article_kpi_map(db: Session, article_ids: List[int]) -> dict[int, dict]:
+    if not article_ids:
+        return {}
+
+    rows = (
+        db.query(EngagementKPI)
+        .filter(
+            EngagementKPI.content_type == "article",
+            EngagementKPI.content_id.in_(article_ids),
+        )
+        .all()
+    )
+    return {
+        r.content_id: {
+            "views_count": r.views_count or 0,
+            "likes_count": r.likes_count or 0,
+            "shares_count": r.shares_count or 0,
+            "bookmarks_count": r.bookmarks_count or 0,
+        }
+        for r in rows
+    }
+
+
+def _article_author_map(db: Session, author_ids: List[int]) -> dict[int, str]:
+    if not author_ids:
+        return {}
+
+    rows = db.query(User.id, User.username, User.email).filter(User.id.in_(author_ids)).all()
+    return {r.id: (r.username or r.email) for r in rows}
 
 # Routes
 @router.get("", response_model=List[ArticleListOut])
@@ -133,6 +174,15 @@ def list_articles(
             for e in exact:
                 _inc_search_kpi(db, e.id)
             db.commit()
+
+            article_ids = [e.id for e in exact]
+            author_ids = [
+                (e.author_id if e.author_id is not None else e.contributor_id)
+                for e in exact
+                if (e.author_id is not None or e.contributor_id is not None)
+            ]
+            kpi_map = _article_kpi_map(db, article_ids)
+            author_map = _article_author_map(db, author_ids)
             
             return [ArticleListOut(
                 id=e.id,
@@ -140,9 +190,16 @@ def list_articles(
                 title_devanagari=e.title_devanagari,
                 title_roman=e.title_roman,
                 excerpt=e.excerpt,
+                author_name=author_map.get(e.author_id if e.author_id is not None else e.contributor_id),
                 tags=e.tags,
                 version=e.version,
-                created_at=e.created_at.isoformat() if e.created_at else None
+                created_at=e.created_at.isoformat() if e.created_at else None,
+                **kpi_map.get(e.id, {
+                    "views_count": 0,
+                    "likes_count": 0,
+                    "shares_count": 0,
+                    "bookmarks_count": 0,
+                }),
             ) for e in exact]
         
         # Fallback to LIKE search in title and body
@@ -163,15 +220,31 @@ def list_articles(
     else:
         rows = query.order_by(ArticleEntry.created_at.desc()).offset(offset).limit(limit).all()
     
+    article_ids = [r.id for r in rows]
+    author_ids = [
+        (r.author_id if r.author_id is not None else r.contributor_id)
+        for r in rows
+        if (r.author_id is not None or r.contributor_id is not None)
+    ]
+    kpi_map = _article_kpi_map(db, article_ids)
+    author_map = _article_author_map(db, author_ids)
+
     return [ArticleListOut(
         id=r.id,
         title=r.title,
         title_devanagari=r.title_devanagari,
         title_roman=r.title_roman,
         excerpt=r.excerpt,
+        author_name=author_map.get(r.author_id if r.author_id is not None else r.contributor_id),
         tags=r.tags,
         version=r.version,
-        created_at=r.created_at.isoformat() if r.created_at else None
+        created_at=r.created_at.isoformat() if r.created_at else None,
+        **kpi_map.get(r.id, {
+            "views_count": 0,
+            "likes_count": 0,
+            "shares_count": 0,
+            "bookmarks_count": 0,
+        }),
     ) for r in rows]
 
 @router.get("/stats", response_model=ArticleStatsOut)
@@ -273,6 +346,14 @@ def get_article(article_id: int, db: Session = Depends(get_db)):
     # Track view in engagement KPIs
     _inc_view_kpi(db, article_id)
     db.commit()
+
+    kpi = db.query(EngagementKPI).filter_by(content_type="article", content_id=article_id).first()
+    author_name = None
+    display_user_id = row.author_id if row.author_id is not None else row.contributor_id
+    if display_user_id is not None:
+        author = db.query(User.id, User.username, User.email).filter(User.id == display_user_id).first()
+        if author:
+            author_name = author.username or author.email
     
     return {
         "id": row.id,
@@ -283,6 +364,7 @@ def get_article(article_id: int, db: Session = Depends(get_db)):
         "body": row.body,
         "excerpt": row.excerpt,
         "author_id": row.author_id,
+        "author_name": author_name,
         "tags": row.tags,
         "contributor_id": row.contributor_id,
         "source_submission_id": row.source_submission_id,
@@ -290,6 +372,10 @@ def get_article(article_id: int, db: Session = Depends(get_db)):
         "version": row.version,
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        "views_count": (kpi.views_count if kpi else 0) or 0,
+        "likes_count": (kpi.likes_count if kpi else 0) or 0,
+        "shares_count": (kpi.shares_count if kpi else 0) or 0,
+        "bookmarks_count": (kpi.bookmarks_count if kpi else 0) or 0,
     }
 
 @router.get("/by-tag/{tag}")

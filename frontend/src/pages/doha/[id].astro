@@ -11,13 +11,24 @@ import StructuredData from "../../components/StructuredData.astro";
 import TrustSignals from "../../components/content/TrustSignals.svelte";
 import ModerationInfo from "../../components/content/ModerationInfo.svelte";
 import Breadcrumbs from "../../components/content/Breadcrumbs.svelte";
+import NavigationControls from "../../components/content/NavigationControls.svelte";
 import { formatHierarchyPath } from "../../lib/hierarchyParser";
 
 const { id } = Astro.params;
 
 let doha;
+let navigation = null;
+
 try {
   doha = await api(`/content/doha/${id}`);
+  
+  // ✅ NEW: Fetch navigation data for prev/next links
+  try {
+    navigation = await api(`/content/doha/${id}/navigation`);
+  } catch (navErr) {
+    // Navigation endpoint failure is non-critical
+    console.warn("[Doha] Navigation fetch failed:", navErr);
+  }
 } catch (e) {
   console.error("[Doha] Failed to load", e);
   return Astro.redirect("/404");
@@ -88,6 +99,17 @@ const workDisplay = doha.work_name || (doha.work_id ? `Work #${doha.work_id}` : 
       </nav>
     )}
 
+    <!-- ✅ NEW: Navigation Controls (Previous/Next) -->
+    {navigation && (
+      <NavigationControls 
+        client:load
+        previousId={navigation.previous?.id}
+        nextId={navigation.next?.id}
+        previousText={navigation.previous?.short_text}
+        nextText={navigation.next?.short_text}
+      />
+    )}
+
     <article class="space-y-8">
       <!-- Trust Signals -->
       <div class="flex justify-center">
@@ -106,6 +128,15 @@ const workDisplay = doha.work_name || (doha.work_id ? `Work #${doha.work_id}` : 
         <h1 class="text-3xl md:text-4xl font-serif leading-relaxed text-center text-slate-100 mb-4 break-words">
           {doha.main_text}
         </h1>
+        
+        <!-- ✅ NEW: Verse Number Badge -->
+        {typeof doha.number_in_chapter === 'number' && (
+          <div class="flex justify-center mb-3">
+            <span class="inline-block px-3 py-1 bg-cyan-500/20 border border-cyan-400/50 rounded-full text-sm font-medium text-cyan-300">
+              Verse {doha.number_in_chapter}
+            </span>
+          </div>
+        )}
         
         <!-- ✅ DEFENSIVE: Show hierarchy path formatted -->
         {hierarchyDisplay && (

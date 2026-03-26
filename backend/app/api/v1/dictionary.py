@@ -1,11 +1,19 @@
 # app/api/v1/dictionary.py
+from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 
 from app.db.session import get_db
-from app.db.models import DictionaryEntry, EngagementKPI
+from app.db.models import (
+    DictionaryEntry,
+    EngagementKPI,
+    ClassicalAuthor,
+    ClassicalWork,
+    WorkChapter,
+)
 from app.utils.text_normalize import normalize_roman
 
 router = APIRouter(prefix="/dictionary", tags=["dictionary"])
@@ -20,7 +28,20 @@ class DictionaryOut(BaseModel):
     lemma_devanagari: str
     lemma_roman: Optional[str]
     language: str
+    author_id: Optional[int]
+    author_name: Optional[str]
+    work_id: Optional[int]
+    work_name: Optional[str]
+    chapter_id: Optional[int]
+    chapter_name: Optional[str]
+    number_in_chapter: Optional[int]
     version: int
+    created_at: Optional[datetime]
+    updated_at: Optional[datetime]
+    views_count: int = 0
+    likes_count: int = 0
+    shares_count: int = 0
+    bookmarks_count: int = 0
 
     class Config:
         orm_mode = True
@@ -30,6 +51,68 @@ class DictionaryDetailOut(DictionaryOut):
     senses: list
     pronunciation: Optional[str]
     examples: Optional[list]
+
+
+def _dictionary_query_with_metadata(db: Session):
+    return (
+        db.query(
+            DictionaryEntry,
+            ClassicalAuthor.name.label("author_name"),
+            ClassicalWork.title.label("work_name"),
+            WorkChapter.title.label("chapter_name"),
+            EngagementKPI.views_count.label("views_count"),
+            EngagementKPI.likes_count.label("likes_count"),
+            EngagementKPI.shares_count.label("shares_count"),
+            EngagementKPI.bookmarks_count.label("bookmarks_count"),
+        )
+        .outerjoin(ClassicalAuthor, ClassicalAuthor.id == DictionaryEntry.author_id)
+        .outerjoin(ClassicalWork, ClassicalWork.id == DictionaryEntry.work_id)
+        .outerjoin(WorkChapter, WorkChapter.id == DictionaryEntry.chapter_id)
+        .outerjoin(
+            EngagementKPI,
+            and_(
+                EngagementKPI.content_type == "dictionary",
+                EngagementKPI.content_id == DictionaryEntry.id,
+            ),
+        )
+    )
+
+
+def _serialize_dictionary_with_metadata(row) -> dict:
+    (
+        entry,
+        author_name,
+        work_name,
+        chapter_name,
+        views_count,
+        likes_count,
+        shares_count,
+        bookmarks_count,
+    ) = row
+
+    return {
+        "id": entry.id,
+        "lemma_devanagari": entry.lemma_devanagari,
+        "lemma_roman": entry.lemma_roman,
+        "language": entry.language,
+        "author_id": entry.author_id,
+        "author_name": author_name,
+        "work_id": entry.work_id,
+        "work_name": work_name,
+        "chapter_id": entry.chapter_id,
+        "chapter_name": chapter_name,
+        "number_in_chapter": entry.number_in_chapter,
+        "version": entry.version,
+        "created_at": entry.created_at,
+        "updated_at": entry.updated_at,
+        "senses": entry.senses,
+        "pronunciation": entry.pronunciation,
+        "examples": entry.examples,
+        "views_count": views_count or 0,
+        "likes_count": likes_count or 0,
+        "shares_count": shares_count or 0,
+        "bookmarks_count": bookmarks_count or 0,
+    }
 
 
 # ----------------------------
@@ -97,7 +180,7 @@ def search_dictionary(
     - If q is provided: search by lemma (devanagari or roman)
     - If q is None: list all public entries (paginated)
     """
-    query = db.query(DictionaryEntry).filter(
+    query = _dictionary_query_with_metadata(db).filter(
         DictionaryEntry.visibility == "public"
     )
     
@@ -117,25 +200,34 @@ def search_dictionary(
     # Only increment search KPI when actually searching (q provided)
     if q:
         for r in results:
-            _inc_search_kpi(db, r.id)
+            _inc_search_kpi(db, r[0].id)
         db.commit()
     
-    return results
+    return [_serialize_dictionary_with_metadata(r) for r in results]
 
 @router.get("/{entry_id}", response_model=DictionaryDetailOut)
 def get_dictionary_entry(entry_id: int, db: Session = Depends(get_db)):
-    entry = (
-        db.query(DictionaryEntry)
+    row = (
+        _dictionary_query_with_metadata(db)
         .filter(
             DictionaryEntry.id == entry_id,
             DictionaryEntry.visibility == "public",
         )
         .first()
     )
-    if not entry:
+    if not row:
         raise HTTPException(status_code=404, detail="Dictionary entry not found")  # ✅ Fix
 
-    _inc_view_kpi(db, entry.id)
+    _inc_view_kpi(db, row[0].id)
     db.commit()
-    return entry
+
+    refreshed = (
+        _dictionary_query_with_metadata(db)
+        .filter(
+            DictionaryEntry.id == entry_id,
+            DictionaryEntry.visibility == "public",
+        )
+        .first()
+    )
+    return _serialize_dictionary_with_metadata(refreshed)
 

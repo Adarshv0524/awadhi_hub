@@ -21,8 +21,109 @@ from app.db.models import (
 )
 from app.services.audit_service import record_audit
 from app.utils.text_normalize import normalize_roman
+from app.schemas.content_navigation import DohaNavCard, DohaNavigationOut
 
 logger = logging.getLogger("app.content_service")
+
+
+def get_doha_navigation(db: Session, doha_id: int) -> DohaNavigationOut:
+    """
+    Return prev/current/next doha cards within the same chapter.
+    
+    Ordering strategy (deterministic, non-shuffling):
+    1. Primary: number_in_chapter (handles gapped sequences by finding nearest ordered neighbor)
+    2. Secondary: created_at (for items without number_in_chapter)
+    3. Tertiary: id (final tiebreaker)
+    """
+    current = (
+        db.query(DohaEntry)
+        .filter(
+            DohaEntry.id == doha_id,
+            DohaEntry.is_deleted == False,
+            DohaEntry.status == "active",
+        )
+        .first()
+    )
+    if not current:
+        raise HTTPException(status_code=404, detail="Doha not found")
+
+    def _to_card(entry: DohaEntry) -> DohaNavCard:
+        text = (entry.main_text or "").strip()
+        short_text = text if len(text) <= 120 else f"{text[:117]}..."
+        return DohaNavCard(
+            id=entry.id,
+            number_in_chapter=entry.number_in_chapter,
+            title=None,
+            short_text=short_text,
+        )
+
+    previous = None
+    next_item = None
+
+    if current.chapter_id is not None:
+        # Strategy: Find previous/next neighbors with strict ordering fallback
+        # This handles both sequential and gapped number_in_chapter values
+        
+        if current.number_in_chapter is not None:
+            # Find previous: largest number_in_chapter < current.number_in_chapter
+            # Fallback to created_at, then id for determinism
+            previous = (
+                db.query(DohaEntry)
+                .filter(
+                    DohaEntry.chapter_id == current.chapter_id,
+                    DohaEntry.number_in_chapter < current.number_in_chapter,
+                    DohaEntry.is_deleted == False,
+                    DohaEntry.status == "active",
+                )
+                .order_by(DohaEntry.number_in_chapter.desc(), DohaEntry.created_at.desc(), DohaEntry.id.desc())
+                .first()
+            )
+
+            # Find next: smallest number_in_chapter > current.number_in_chapter
+            # Fallback to created_at, then id for determinism
+            next_item = (
+                db.query(DohaEntry)
+                .filter(
+                    DohaEntry.chapter_id == current.chapter_id,
+                    DohaEntry.number_in_chapter > current.number_in_chapter,
+                    DohaEntry.is_deleted == False,
+                    DohaEntry.status == "active",
+                )
+                .order_by(DohaEntry.number_in_chapter.asc(), DohaEntry.created_at.asc(), DohaEntry.id.asc())
+                .first()
+            )
+        else:
+            # Fallback ordering when number_in_chapter is None
+            # Use created_at as primary, id as secondary
+            previous = (
+                db.query(DohaEntry)
+                .filter(
+                    DohaEntry.chapter_id == current.chapter_id,
+                    DohaEntry.created_at < current.created_at,
+                    DohaEntry.is_deleted == False,
+                    DohaEntry.status == "active",
+                )
+                .order_by(DohaEntry.created_at.desc(), DohaEntry.id.desc())
+                .first()
+            )
+
+            next_item = (
+                db.query(DohaEntry)
+                .filter(
+                    DohaEntry.chapter_id == current.chapter_id,
+                    DohaEntry.created_at > current.created_at,
+                    DohaEntry.is_deleted == False,
+                    DohaEntry.status == "active",
+                )
+                .order_by(DohaEntry.created_at.asc(), DohaEntry.id.asc())
+                .first()
+            )
+
+    return DohaNavigationOut(
+        previous=_to_card(previous) if previous else None,
+        current=_to_card(current),
+        next=_to_card(next_item) if next_item else None,
+    )
 
 # ---- Validators (pydantic) ----
 class DictionarySense(BaseModel):

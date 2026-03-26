@@ -65,6 +65,7 @@ app.include_router(moderation_router.router)
 app.include_router(content_router.router) 
 app.include_router(search_router.router)
 app.include_router(analytics_router.router)
+app.include_router(analytics_router.admin_router)
 app.include_router(admin_settings_router.router)
 app.include_router(admin_audit_router.router)
 # NEW: Register dictionary, idiom, article routes

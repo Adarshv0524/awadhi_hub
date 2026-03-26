@@ -4,10 +4,13 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import func
 
 from app.db.session import get_db
 from app.core.security import require_role
 from app.core.permissions import Role
+from app.db.models import Submission, ModerationLog
 from app.services.analytics_service import (
     get_top_content,
     get_growth_trends,
@@ -16,6 +19,13 @@ from app.services.analytics_service import (
 
 router = APIRouter(
     prefix="/analytics",
+    tags=["analytics"],
+    dependencies=[Depends(require_role(Role.ADMIN))],
+)
+
+# Backward-compatible admin-prefixed analytics routes
+admin_router = APIRouter(
+    prefix="/admin/analytics",
     tags=["analytics"],
     dependencies=[Depends(require_role(Role.ADMIN))],
 )
@@ -43,6 +53,12 @@ class GrowthSeries(BaseModel):
 class DemandItem(BaseModel):
     count: int
     percent: float
+
+
+class AnalyticsSummaryOut(BaseModel):
+    today_approved: int = 0
+    pending_review: int = 0
+    total_approved: int = 0
 
 
 # ✅ FIX: Remove DemandDistribution wrapper, return plain dict
@@ -100,7 +116,10 @@ def top_content(
     - **end_date**: ISO format UTC (default: now)
     """
     start, end = _date_range(start_date, end_date)
-    return get_top_content(db, content_type, limit, start, end)
+    try:
+        return get_top_content(db, content_type, limit, start, end)
+    except SQLAlchemyError:
+        return []
 
 
 # =====================================================
@@ -119,7 +138,10 @@ def growth_trends(
     Returns time series data for doha, dictionary, idiom, article, and users.
     """
     start, end = _date_range(start_date, end_date)
-    return get_growth_trends(db, start, end)
+    try:
+        return get_growth_trends(db, start, end)
+    except SQLAlchemyError:
+        return GrowthSeries(dates=[], series={})
 
 
 # =====================================================
@@ -133,4 +155,71 @@ def demand_distribution(db=Depends(get_db)):
     
     Returns count and percentage of total search hits by type.
     """
-    return get_demand_distribution(db)
+    try:
+        return get_demand_distribution(db)
+    except SQLAlchemyError:
+        return {}
+
+
+@router.get("/summary", response_model=AnalyticsSummaryOut)
+def analytics_summary(db=Depends(get_db)):
+    start_of_day = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        today_approved = (
+            db.query(func.count(ModerationLog.id))
+            .filter(
+                ModerationLog.action.like("approve%"),
+                ModerationLog.created_at >= start_of_day,
+            )
+            .scalar()
+            or 0
+        )
+        pending_review = (
+            db.query(func.count(Submission.id))
+            .filter(
+                Submission.status == "pending_review",
+                Submission.is_deleted == False,
+            )
+            .scalar()
+            or 0
+        )
+        total_approved = (
+            db.query(func.count(Submission.id))
+            .filter(
+                Submission.status == "approved",
+                Submission.is_deleted == False,
+            )
+            .scalar()
+            or 0
+        )
+        return AnalyticsSummaryOut(
+            today_approved=int(today_approved),
+            pending_review=int(pending_review),
+            total_approved=int(total_approved),
+        )
+    except SQLAlchemyError:
+        return AnalyticsSummaryOut(today_approved=0, pending_review=0, total_approved=0)
+
+
+@admin_router.get("/summary", response_model=AnalyticsSummaryOut)
+def admin_analytics_summary(db=Depends(get_db)):
+    return analytics_summary(db)
+
+
+@admin_router.get("/contributor-trends")
+def admin_contributor_trends(start_date: str | None = None, end_date: str | None = None, db=Depends(get_db)):
+    start, end = _date_range(start_date, end_date)
+    try:
+        return get_growth_trends(db, start, end)
+    except SQLAlchemyError:
+        return GrowthSeries(dates=[], series={})
+
+
+@admin_router.get("/content-performance")
+def admin_content_performance(limit: int = Query(20, ge=1, le=100), db=Depends(get_db)):
+    end = datetime.utcnow()
+    start = end - timedelta(days=30)
+    try:
+        return get_top_content(db, None, limit, start, end)
+    except SQLAlchemyError:
+        return []

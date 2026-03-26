@@ -161,6 +161,15 @@ def test_get_dictionary_entry(client, db):
     data = r.json()
     assert data["lemma_devanagari"] == "मुख्य शब्द"
     assert data["lemma_roman"] == "mukhya shabd"
+    assert "created_at" in data
+    assert "updated_at" in data
+    assert data["views_count"] >= 1
+    assert data["likes_count"] >= 0
+    assert data["shares_count"] >= 0
+    assert data["bookmarks_count"] >= 0
+    assert "author_name" in data
+    assert "work_name" in data
+    assert "chapter_name" in data
 
 # Idiom Tests
 def test_single_approve_idiom(client, db):
@@ -217,6 +226,15 @@ def test_get_idiom(client, db):
     assert r.status_code == 200
     data = r.json()
     assert data["text_devanagari"] == "अंधों में काना राजा"
+    assert "created_at" in data
+    assert "updated_at" in data
+    assert data["views_count"] >= 1
+    assert data["likes_count"] >= 0
+    assert data["shares_count"] >= 0
+    assert data["bookmarks_count"] >= 0
+    assert "author_name" in data
+    assert "work_name" in data
+    assert "chapter_name" in data
 
 # Article Tests
 def test_single_approve_article(client, db):
@@ -274,6 +292,11 @@ def test_get_article(client, db):
     data = r.json()
     assert data["title"] == "Test Article"
     assert data["body"] == "Test Article Body Content"
+    assert "author_name" in data
+    assert data["views_count"] >= 1
+    assert data["likes_count"] >= 0
+    assert data["shares_count"] >= 0
+    assert data["bookmarks_count"] >= 0
 
 # Batch approve atomic abort test
 def test_batch_approve_atomic_abort(client, db):

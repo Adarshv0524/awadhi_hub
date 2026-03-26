@@ -1,0 +1,68 @@
+name: Backend Schema Guard
+
+on:
+  pull_request:
+    paths:
+      - backend/**
+      - .github/workflows/**
+  push:
+    branches:
+      - main
+    paths:
+      - backend/**
+      - .github/workflows/**
+
+jobs:
+  schema-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+      MYSQL_DATABASE: awadhi_ci
+      APP_ENV: test
+      JWT_SECRET_KEY: ci-test-secret
+      FRONTEND_BASE_URL: http://localhost:4321
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: awadhi_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Migration smoke test
+        run: python backend/scripts/migration_smoke_test.py
+
+      - name: Schema contract check
+        run: python backend/scripts/schema_contract_check.py
+
+      - name: Schema drift simulation (must fail)
+        run: |
+          if python backend/scripts/schema_contract_check.py --simulate-drift; then
+            echo "Expected simulated drift check to fail, but it passed"
+            exit 1
+          fi
+          echo "Simulated drift was detected as expected"
