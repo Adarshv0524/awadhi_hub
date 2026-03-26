@@ -4,9 +4,107 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.db.models import UserInteraction, ShareLog, Report, EngagementKPI
+from app.db.models import (
+    UserInteraction,
+    ShareLog,
+    Report,
+    EngagementKPI,
+    DohaEntry,
+    DictionaryEntry,
+    IdiomEntry,
+    ArticleEntry,
+)
 from app.services.engagement_service import _get_or_create_kpi, compute_weight_score
 logger = logging.getLogger("app.interaction_service")
+
+
+def _build_content_preview(db: Session, content_type: str, content_id: int) -> Dict[str, Any]:
+    if content_type == "doha":
+        row = db.query(DohaEntry).filter(DohaEntry.id == content_id, DohaEntry.is_deleted == False).first()
+        if not row:
+            return {"content_title": f"doha #{content_id}", "content_snippet": None}
+        text = (row.main_text or "").strip()
+        return {
+            "content_title": text[:80] if text else f"doha #{content_id}",
+            "content_snippet": text[:180] if text else None,
+        }
+
+    if content_type == "dictionary":
+        row = db.query(DictionaryEntry).filter(DictionaryEntry.id == content_id).first()
+        if not row:
+            return {"content_title": f"dictionary #{content_id}", "content_snippet": None}
+        lemma = (row.lemma_devanagari or row.lemma_roman or "").strip()
+        first_def = None
+        if isinstance(row.senses, list) and row.senses:
+            first = row.senses[0] or {}
+            if isinstance(first, dict):
+                first_def = first.get("definition")
+        return {
+            "content_title": lemma or f"dictionary #{content_id}",
+            "content_snippet": first_def,
+        }
+
+    if content_type == "idiom":
+        row = db.query(IdiomEntry).filter(IdiomEntry.id == content_id).first()
+        if not row:
+            return {"content_title": f"idiom #{content_id}", "content_snippet": None}
+        text = (row.text_devanagari or row.text_roman or "").strip()
+        return {
+            "content_title": text or f"idiom #{content_id}",
+            "content_snippet": row.meaning,
+        }
+
+    if content_type == "article":
+        row = db.query(ArticleEntry).filter(ArticleEntry.id == content_id).first()
+        if not row:
+            return {"content_title": f"article #{content_id}", "content_snippet": None}
+        return {
+            "content_title": row.title or f"article #{content_id}",
+            "content_snippet": row.excerpt or (row.body[:180] if row.body else None),
+        }
+
+    return {"content_title": f"{content_type} #{content_id}", "content_snippet": None}
+
+
+def list_user_interactions(
+    db: Session,
+    user_id: int,
+    interaction_type: str,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    q = db.query(UserInteraction).filter(
+        UserInteraction.user_id == user_id,
+        UserInteraction.interaction_type == interaction_type,
+        UserInteraction.is_active == True,
+    )
+
+    total_count = q.count()
+    rows = (
+        q.order_by(UserInteraction.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    results = []
+    for r in rows:
+        preview = _build_content_preview(db, r.content_type, r.content_id)
+        results.append(
+            {
+                "content_type": r.content_type,
+                "content_id": r.content_id,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "metadata": r.interaction_metadata,
+                "content_title": preview.get("content_title"),
+                "content_snippet": preview.get("content_snippet"),
+            }
+        )
+
+    return {
+        "total_count": total_count,
+        "results": results,
+    }
 def toggle_interaction(
     db: Session,
     user_id: int,
@@ -152,28 +250,20 @@ def create_report(
         raise
     return {"ok": True, "report_id": rpt.id, "status": rpt.status}
 def list_user_bookmarks(db: Session, user_id: int, limit: int = 50, offset: int = 0):
-    """
-    Return list of active bookmarks for a user, with preview fields:
-    - content_type, content_id, created_at
-    """
-    q = (
-        db.query(UserInteraction)
-        .filter(
-            UserInteraction.user_id == user_id,
-            UserInteraction.interaction_type == "bookmark",
-            UserInteraction.is_active == True,
-        )
-        .order_by(UserInteraction.created_at.desc())
-        .offset(offset)
-        .limit(limit)
+    return list_user_interactions(
+        db=db,
+        user_id=user_id,
+        interaction_type="bookmark",
+        limit=limit,
+        offset=offset,
     )
-    rows = q.all()
-    out = []
-    for r in rows:
-        out.append({
-            "content_type": r.content_type,
-            "content_id": r.content_id,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "metadata": r.interaction_metadata,  # UPDATED
-        })
-    return out
+
+
+def list_user_likes(db: Session, user_id: int, limit: int = 50, offset: int = 0):
+    return list_user_interactions(
+        db=db,
+        user_id=user_id,
+        interaction_type="like",
+        limit=limit,
+        offset=offset,
+    )

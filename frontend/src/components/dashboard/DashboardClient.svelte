@@ -1,13 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { getMe } from "../../lib/auth";
-  import { getUserBookmarks } from "../../lib/interactions";
+  import { getUserBookmarks, getUserLikes } from "../../lib/interactions";
   import { api } from "../../lib/api";
 
   let user: any = null;
   let submissions: any[] = [];
   let bookmarks: any[] = [];
-  let likes: any[] = []; // Dummy data for now
+  let likes: any[] = [];
   let loading = true;
   let error = "";
   
@@ -30,6 +30,12 @@
   let bookmarksPage = 0;
   let bookmarksLimit = 10;
   let bookmarksTotal = 0;
+
+  let likesPage = 0;
+  let likesLimit = 10;
+  let likesTotal = 0;
+  let likesLoaded = false;
+  let likesLoading = false;
   
   // Helper to convert singular content_type to plural route
   function getContentRoute(contentType: string): string {
@@ -60,10 +66,7 @@
       
       // Load engagement metrics
       await loadEngagementMetrics();
-      
-      // Load likes (dummy for now - TODO: backend endpoint needed)
-      likes = []; // Empty for now
-      
+
     } catch (e: any) {
       error = e?.message || "Failed to load dashboard";
       console.error("[Dashboard] Error:", e);
@@ -85,29 +88,30 @@
   async function loadBookmarks() {
     try {
       const response = await getUserBookmarks(user.id, bookmarksLimit, bookmarksPage * bookmarksLimit);
-      // Handle both {count, results} and direct array responses
       bookmarks = response?.results || response || [];
-      bookmarksTotal = response?.count || bookmarks.length;
-      
-      // Fetch full content details for each bookmark to show text instead of just IDs
-      bookmarks = await Promise.all(
-        bookmarks.map(async (b) => {
-          try {
-            const route = getContentRoute(b.content_type);
-            const content = await api(`/${route}/${b.content_id}`);
-            return {
-              ...b,
-              content_title: content?.text_devanagari || content?.text || content?.title || content?.main_text || `#${b.content_id}`
-            };
-          } catch (e) {
-            console.error(`Failed to load ${b.content_type} ${b.content_id}:`, e);
-            return { ...b, content_title: `${b.content_type} #${b.content_id}` };
-          }
-        })
-      );
+      bookmarksTotal = response?.total_count ?? response?.count ?? bookmarks.length;
     } catch (e) {
       console.error("[Dashboard] Failed to load bookmarks:", e);
       bookmarks = [];
+      bookmarksTotal = 0;
+    }
+  }
+
+  async function loadLikes() {
+    if (!user) return;
+    likesLoading = true;
+    try {
+      const response = await getUserLikes(user.id, likesLimit, likesPage * likesLimit);
+      likes = response?.results || response || [];
+      likesTotal = response?.total_count ?? response?.count ?? likes.length;
+      likesLoaded = true;
+    } catch (e) {
+      console.error("[Dashboard] Failed to load likes:", e);
+      likes = [];
+      likesTotal = 0;
+      likesLoaded = true;
+    } finally {
+      likesLoading = false;
     }
   }
   
@@ -162,6 +166,11 @@
     bookmarksPage = newPage;
     await loadBookmarks();
   }
+
+  async function changeLikesPage(newPage: number) {
+    likesPage = newPage;
+    await loadLikes();
+  }
   
   function formatDate(dateStr: string) {
     try {
@@ -190,6 +199,11 @@
     : submissions.filter(s => s.status === statusFilter);
     
   $: bookmarksTotalPages = Math.ceil(bookmarksTotal / bookmarksLimit);
+  $: likesTotalPages = Math.ceil(likesTotal / likesLimit);
+
+  $: if (activeTab === "likes" && user && !likesLoaded && !likesLoading) {
+    loadLikes();
+  }
 </script>
 
 <div class="max-w-5xl mx-auto px-4">
@@ -387,7 +401,7 @@
         >
           Likes
           <span class="ml-2 px-2 py-0.5 bg-slate-700 rounded-full text-xs">
-            {likes.length}
+            {likesTotal}
           </span>
           {#if activeTab === "likes"}
             <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-400"></div>
@@ -591,22 +605,87 @@
         <!-- Likes Tab -->
         <h3 class="text-xl font-semibold text-cyan-400 mb-6">My Likes</h3>
 
-        <!-- Empty State (Dummy implementation - TODO: Backend needed) -->
-        <div class="text-center py-16">
-          <div class="text-6xl mb-4">❤️</div>
-          <h4 class="text-xl font-semibold text-slate-300 mb-2">Likes feature coming soon</h4>
-          <p class="text-slate-400 mb-6 max-w-md mx-auto">
-            We're working on adding a page to view all the content you've liked. This feature will be available in a future update.
-          </p>
-          <div class="mt-8 p-4 bg-blue-900/20 border border-blue-800/30 rounded-lg max-w-md mx-auto">
-            <p class="text-xs text-blue-300 flex items-start gap-2">
-              <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-              <span>Backend API endpoint needed: GET /interactions/users/:id/likes - See BACKEND_TODO_user_likes.md for implementation details.</span>
-            </p>
+        {#if likesLoading}
+          <div class="text-center py-12">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-2 border-pink-500 border-t-transparent"></div>
+            <p class="text-pink-300 mt-3">Loading your likes...</p>
           </div>
-        </div>
+        {:else if likes.length === 0}
+          <div class="text-center py-16">
+            <div class="text-6xl mb-4">❤️</div>
+            <h4 class="text-xl font-semibold text-slate-300 mb-2">No likes yet</h4>
+            <p class="text-slate-400 mb-6 max-w-md mx-auto">
+              You haven't liked any verses yet.
+            </p>
+            <a href="/doha" class="px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white rounded-lg text-sm font-medium transition-colors">
+              Explore Doha
+            </a>
+          </div>
+        {:else}
+          <ul class="space-y-3">
+            {#each likes as l}
+              <li class="border border-slate-600 bg-slate-900 rounded-lg p-4 hover:border-pink-500 transition-colors">
+                <div class="flex justify-between items-start">
+                  <div class="flex-1">
+                    <a
+                      href={`/${getContentRoute(l.content_type)}/${l.content_id}`}
+                      class="text-cyan-400 hover:text-cyan-300 font-medium text-lg inline-block mb-2 hover:underline"
+                    >
+                      {l.content_title || `${l.content_type} #${l.content_id}`}
+                    </a>
+                    {#if l.content_snippet}
+                      <p class="text-slate-300 text-sm line-clamp-2 mb-2">{l.content_snippet}</p>
+                    {/if}
+                    <div class="text-xs text-slate-500">
+                      Liked: {l.created_at ? formatDate(l.created_at) : "—"}
+                    </div>
+                  </div>
+                  <span
+                    class="px-3 py-1 rounded text-xs font-semibold uppercase border"
+                    class:bg-cyan-900={l.content_type === 'doha'}
+                    class:text-cyan-300={l.content_type === 'doha'}
+                    class:border-cyan-700={l.content_type === 'doha'}
+                    class:bg-blue-900={l.content_type === 'dictionary'}
+                    class:text-blue-300={l.content_type === 'dictionary'}
+                    class:border-blue-700={l.content_type === 'dictionary'}
+                    class:bg-indigo-900={l.content_type === 'idiom'}
+                    class:text-indigo-300={l.content_type === 'idiom'}
+                    class:border-indigo-700={l.content_type === 'idiom'}
+                    class:bg-purple-900={l.content_type === 'article'}
+                    class:text-purple-300={l.content_type === 'article'}
+                    class:border-purple-700={l.content_type === 'article'}
+                  >
+                    {l.content_type}
+                  </span>
+                </div>
+              </li>
+            {/each}
+          </ul>
+
+          {#if likesTotalPages > 1}
+            <div class="mt-6 flex justify-center items-center gap-2">
+              <button
+                on:click={() => changeLikesPage(likesPage - 1)}
+                disabled={likesPage === 0}
+                class="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
+              >
+                Previous
+              </button>
+
+              <span class="text-sm text-slate-400">
+                Page {likesPage + 1} of {likesTotalPages}
+              </span>
+
+              <button
+                on:click={() => changeLikesPage(likesPage + 1)}
+                disabled={likesPage >= likesTotalPages - 1}
+                class="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          {/if}
+        {/if}
       {/if}
     </div>
   {/if}

@@ -89,3 +89,17 @@ export async function getUserBookmarks(
     `/interactions/users/${userId}/bookmarks?limit=${limit}&offset=${offset}`
   );
 }
+
+/**
+ * Get user's liked content
+ * @returns {total_count: number, results: Array}
+ */
+export async function getUserLikes(
+  userId: number,
+  limit = 20,
+  offset = 0
+) {
+  return api(
+    `/interactions/users/${userId}/likes?limit=${limit}&offset=${offset}`
+  );
+}

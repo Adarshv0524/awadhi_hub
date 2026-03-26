@@ -9,7 +9,13 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.core.security import get_current_user, require_role
 from app.core.permissions import Role
-from app.services.interaction_service import toggle_interaction, record_share, create_report, list_user_bookmarks
+from app.services.interaction_service import (
+    toggle_interaction,
+    record_share,
+    create_report,
+    list_user_bookmarks,
+    list_user_likes,
+)
 
 router = APIRouter(prefix="/interactions", tags=["interactions"])
 
@@ -55,10 +61,28 @@ def api_create_report(payload: ReportIn, db: Session = Depends(get_db), current_
     return res
 
 
+def _ensure_owner_or_admin(current_user, user_id: int):
+    if current_user.id != user_id and current_user.role != Role.ADMIN:
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+
 @router.get("/users/{user_id}/bookmarks")
 def api_list_user_bookmarks(user_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200)):
-    # Owner-only or admin
-    if current_user.id != user_id and current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Not allowed")
+    _ensure_owner_or_admin(current_user, user_id)
     res = list_user_bookmarks(db=db, user_id=user_id, limit=limit, offset=offset)
-    return {"count": len(res), "results": res}
+    return {
+        "total_count": res["total_count"],
+        "count": res["total_count"],
+        "results": res["results"],
+    }
+
+
+@router.get("/users/{user_id}/likes")
+def api_list_user_likes(user_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200)):
+    _ensure_owner_or_admin(current_user, user_id)
+    res = list_user_likes(db=db, user_id=user_id, limit=limit, offset=offset)
+    return {
+        "total_count": res["total_count"],
+        "count": res["total_count"],
+        "results": res["results"],
+    }
