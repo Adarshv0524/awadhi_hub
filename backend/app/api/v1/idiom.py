@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import List, Optional, Literal
 from fastapi import APIRouter, Depends, Query, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, asc, desc
 
@@ -24,6 +24,8 @@ router = APIRouter(prefix="/idioms", tags=["idioms"])
 # ----------------------------
 
 class IdiomOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     text_devanagari: str
     text_roman: str
@@ -44,10 +46,6 @@ class IdiomOut(BaseModel):
     bookmarks_count: int = 0
     search_hits_count: int = 0
     weight_score: float = 0.0
-
-    class Config:
-        orm_mode = True
-
 
 def _idiom_query_with_metadata(db: Session):
     return (

@@ -163,7 +163,7 @@ const idiomUrl = `${baseUrl}/idioms/${id}`;
             />
           </div>
 
-          <Recommendations content_type="idiom" content_id={idiom.id} client:load />
+          <Recommendations content_type="idiom" content_id={idiom.id} client:visible />
 
           <div class="text-center pt-4">
             <a href="/idioms" class="text-cyan-400 hover:text-cyan-300 underline">← Back to Idioms</a>

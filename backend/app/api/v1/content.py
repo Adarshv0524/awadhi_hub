@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional, List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, asc, desc
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,8 @@ router = APIRouter(prefix="/content", tags=["content"])
 
 
 class DohaOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     hierarchy_path: Optional[str]
     author_id: Optional[int]
@@ -58,11 +60,9 @@ class DohaOut(BaseModel):
     search_hits_count: int = 0
     weight_score: float = 0.0
 
-    class Config:
-        orm_mode = True
-
-
 class ContentVersionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     content_type: str
     content_id: int
@@ -72,10 +72,6 @@ class ContentVersionOut(BaseModel):
     text_devanagari: Optional[str]
     text_romanized: Optional[str]
     created_by: Optional[int]
-
-    class Config:
-        orm_mode = True
-
 
 def _doha_query_with_metadata(db: Session):
     return (

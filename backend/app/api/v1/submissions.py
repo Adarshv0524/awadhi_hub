@@ -3,7 +3,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, List, Any, Dict
 
 from sqlalchemy.orm import Session
@@ -47,6 +47,8 @@ class SubmissionUpdateIn(BaseModel):
     expected_version: int
 
 class SubmissionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     content_type: str
     main_text: str
@@ -62,10 +64,6 @@ class SubmissionOut(BaseModel):
     version: int
     contributor_id: int
     priority: int
-
-    class Config:
-        orm_mode = True
-
 
 class SubmissionDetailOut(SubmissionOut):
     created_at: Optional[datetime] = None
@@ -174,6 +172,24 @@ def _ensure_can_update_submission(user: User, submission: Submission, metadata_t
         raise HTTPException(
             status_code=403,
             detail="Only moderator/admin users can edit hierarchy metadata",
+        )
+
+
+def _validate_idiom_romanized_update(submission: Submission, incoming_external_references: Optional[Dict[str, Any]]):
+    if submission.content_type != "idiom":
+        return
+
+    effective_external_references: Dict[str, Any] = {}
+    if isinstance(submission.external_references, dict):
+        effective_external_references.update(submission.external_references)
+    if isinstance(incoming_external_references, dict):
+        effective_external_references.update(incoming_external_references)
+
+    text_roman = effective_external_references.get("text_roman")
+    if not isinstance(text_roman, str) or not text_roman.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Idiom updates require external_references.text_roman",
         )
 
 
@@ -297,6 +313,8 @@ def update_submission(
             new_chapter_slug,
             new_number_in_chapter,
         )
+
+    _validate_idiom_romanized_update(sub, data.external_references)
 
     if data.main_text is not None:
         sub.main_text = data.main_text

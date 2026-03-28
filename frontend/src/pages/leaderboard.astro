@@ -1,0 +1,13 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import LiveLeaderboard from "../components/leaderboard/LiveLeaderboard.svelte";
+---
+
+<BaseLayout title="Leaderboard · Awadhi New" description="Live contributor leaderboard with engagement updates.">
+  <div class="mx-auto max-w-5xl py-8">
+    <p class="mb-4 text-sm text-slate-400">Live ranking refreshes automatically as interactions change.</p>
+    <LiveLeaderboard client:load />
+  </div>
+</BaseLayout>

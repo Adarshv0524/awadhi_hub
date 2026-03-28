@@ -13,6 +13,10 @@ from app.db.models import (
     DictionaryEntry,
     IdiomEntry,
     ArticleEntry,
+    PoetryNode,
+    ClassicalAuthor,
+    ClassicalWork,
+    WorkChapter,
 )
 from app.services.engagement_service import _get_or_create_kpi, compute_weight_score
 logger = logging.getLogger("app.interaction_service")
@@ -63,6 +67,26 @@ def _build_content_preview(db: Session, content_type: str, content_id: int) -> D
             "content_snippet": row.excerpt or (row.body[:180] if row.body else None),
         }
 
+    row = (
+        db.query(PoetryNode, ClassicalAuthor.slug, ClassicalWork.slug, WorkChapter.slug)
+        .join(ClassicalAuthor, ClassicalAuthor.id == PoetryNode.author_id)
+        .join(ClassicalWork, ClassicalWork.id == PoetryNode.work_id)
+        .join(WorkChapter, WorkChapter.id == PoetryNode.chapter_id)
+        .filter(
+            PoetryNode.id == content_id,
+            PoetryNode.poetry_type == content_type,
+            PoetryNode.is_deleted == False,
+        )
+        .first()
+    )
+    if row:
+        node, author_slug, work_slug, chapter_slug = row
+        return {
+            "content_title": (node.main_text or f"{content_type} #{content_id}")[:80],
+            "content_snippet": node.meaning or node.main_text,
+            "content_path": f"/{author_slug}/{work_slug}/{chapter_slug}",
+        }
+
     return {"content_title": f"{content_type} #{content_id}", "content_snippet": None}
 
 
@@ -99,6 +123,11 @@ def list_user_interactions(
             ArticleEntry.title.label("article_title"),
             ArticleEntry.excerpt.label("article_excerpt"),
             ArticleEntry.body.label("article_body"),
+            PoetryNode.main_text.label("poetry_main_text"),
+            PoetryNode.meaning.label("poetry_meaning"),
+            ClassicalAuthor.slug.label("poetry_author_slug"),
+            ClassicalWork.slug.label("poetry_work_slug"),
+            WorkChapter.slug.label("poetry_chapter_slug"),
         )
         .outerjoin(
             DohaEntry,
@@ -129,6 +158,26 @@ def list_user_interactions(
                 UserInteraction.content_id == ArticleEntry.id,
             ),
         )
+        .outerjoin(
+            PoetryNode,
+            and_(
+                UserInteraction.content_id == PoetryNode.id,
+                UserInteraction.content_type == PoetryNode.poetry_type,
+                PoetryNode.is_deleted == False,
+            ),
+        )
+        .outerjoin(
+            ClassicalAuthor,
+            PoetryNode.author_id == ClassicalAuthor.id,
+        )
+        .outerjoin(
+            ClassicalWork,
+            PoetryNode.work_id == ClassicalWork.id,
+        )
+        .outerjoin(
+            WorkChapter,
+            PoetryNode.chapter_id == WorkChapter.id,
+        )
         .filter(*filters)
         .order_by(UserInteraction.created_at.desc())
         .offset(offset)
@@ -151,8 +200,12 @@ def list_user_interactions(
             title = (r.article_title or "").strip() or f"article #{r.content_id}"
             snippet = r.article_excerpt or ((r.article_body or "")[:180] if r.article_body else None)
         else:
-            title = f"{r.content_type} #{r.content_id}"
-            snippet = None
+            title = (r.poetry_main_text or "").strip() or f"{r.content_type} #{r.content_id}"
+            snippet = r.poetry_meaning or r.poetry_main_text or None
+
+        content_path = None
+        if r.poetry_author_slug and r.poetry_work_slug and r.poetry_chapter_slug:
+            content_path = f"/{r.poetry_author_slug}/{r.poetry_work_slug}/{r.poetry_chapter_slug}"
 
         results.append(
             {
@@ -164,6 +217,7 @@ def list_user_interactions(
                 "metadata": r.metadata,
                 "content_title": title,
                 "content_snippet": snippet,
+                "content_path": content_path,
             }
         )
 

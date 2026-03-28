@@ -1,1040 +1,413 @@
-# Architecture: Technical Deep Dive
-
-**Document Scope**: Hierarchical content model, database schema, content delivery orchestration, and sequencing logic  
-**Audience**: Backend engineers, system designers, future maintainers  
-**Last Updated**: March 26, 2026  
-
----
-
-## Part 0: Authentication Architecture
-
-### 0.1 Active Authentication Modes
-
-The system supports two active authentication modes:
-
-- Email/password via `POST /auth/login`
-- Google OAuth 2.0 via `/auth/oauth/google/login` and `/auth/oauth/google/callback`
-
-Both flows issue the same JWT access and refresh tokens and converge on the same frontend session storage behavior.
-
-### 0.2 Google OAuth Runtime Flow
-
-1. Frontend login initiates Google OAuth with `client_id`, `redirect_uri`, `response_type=code`, `scope=openid email profile`, and a state token.
-2. Google redirects to backend callback: `/auth/oauth/google/callback`.
-3. Backend validates state, exchanges code for Google tokens, resolves or creates the user, then issues platform JWT tokens.
-4. Backend redirects to frontend `/oauth/callback` with JWT tokens in URL fragment.
-5. Frontend callback stores tokens and completes redirect to the requested app path.
-
-### 0.3 Configuration Notes
-
-- Frontend public config uses `PUBLIC_GOOGLE_CLIENT_ID` for OAuth URL composition.
-- OAuth callback target must match backend expectations and Google Console allowed redirect URIs.
-- No OAuth client secret is stored in frontend code or public environment variables.
-
----
-
-## Part 1: Hierarchical Content Architecture
-
-### 1.1 The Three-Layer Hierarchy Model
-
-The system employs a **strict hierarchical model** for classical literary works:
-
-```
-ClassicalAuthor (primary key: id, unique: slug)
-    ↓ (1:N relationship via author_id)
-  ClassicalWork (primary key: id, unique: (author_id, slug))
-    ↓ (1:N relationship via work_id)
-    WorkChapter (primary key: id, unique: (work_id, slug))
-```
-
-**Why this structure?**
-- Enforces referential integrity (no orphaned works/chapters)
-- Enables slug-based URL routing (e.g., `/tulsidas/ramcharitmanas/ayodhya-kand`)
-- Supports efficient hierarchy traversal with minimal queries
-
-#### ClassicalAuthor Table
-
-```python
-class ClassicalAuthor(Base):
-    __tablename__ = "classical_authors"
-    id = Column(Integer, primary_key=True)
-    slug = Column(String(150), unique=True, index=True)  # tulsidas, krittibas
-    name = Column(String(255))                           # तुलसीदास
-    short_bio = Column(Text)
-    long_bio = Column(Text)
-    language = Column(String(50))                        # awadhi, hindi
-    is_deleted = Column(Boolean, default=False)
-    created_at, updated_at = Column(DateTime)...
-```
-
-#### ClassicalWork Table
-
-```python
-class ClassicalWork(Base):
-    __tablename__ = "classical_works"
-    id = Column(Integer, primary_key=True)
-    author_id = Column(Integer, ForeignKey("classical_authors.id"))
-    slug = Column(String(150), index=True)     # ramcharitmanas, chandayan
-    title = Column(String(255))                # रामचरितमानस
-    description = Column(Text)
-    work_type = Column(String(50))             # poetry, prose, narrative
-    original_script = Column(String(50))       # devanagari, kaithi
-    is_deleted = Column(Boolean, default=False)
-    created_at, updated_at = Column(DateTime)...
-    
-    __table_args__ = (
-        UniqueConstraint("author_id", "slug"),  # (tulsidas, ramcharitmanas) unique
-    )
-```
-
-#### WorkChapter Table
-
-```python
-class WorkChapter(Base):
-    __tablename__ = "work_chapters"
-    id = Column(Integer, primary_key=True)
-    work_id = Column(Integer, ForeignKey("classical_works.id"))
-    slug = Column(String(150), index=True)     # ayodhya-kand, manas-kand
-    title = Column(String(255))                # अयोध्या काण्ड
-    number = Column(Integer)                   # 1, 2, 3, ... (chapter order)
-    is_deleted = Column(Boolean, default=False)
-    created_at, updated_at = Column(DateTime)...
-    
-    __table_args__ = (
-        UniqueConstraint("work_id", "slug"),    # (ramcharitmanas, ayodhya-kand) unique
-        UniqueConstraint("work_id", "number"),  # enforce strict ordering
-    )
-```
-
----
-
-### 1.2 Content Node Linking via Cross-References
-
-Classical literature often contains **multiple content types within a single chapter**: verses (Doha/Chaupai), word definitions, idioms, annotations. Rather than creating separate tables per chapter and forcing one-to-one relationships, the system uses **cross-reference fields** to enable **polymorphic content** within a hierarchy.
-
-#### The Cross-Reference Pattern
-
-All canonical content tables include:
-
-```python
-# Common to DohaEntry, DictionaryEntry, IdiomEntry, ArticleEntry
-author_id = Column(Integer, ForeignKey("classical_authors.id"), nullable=True)
-work_id = Column(Integer, ForeignKey("classical_works.id"), nullable=True)
-chapter_id = Column(Integer, ForeignKey("work_chapters.id"), nullable=True)
-number_in_chapter = Column(Integer, nullable=True)
-hierarchy_path = Column(String(512), nullable=True)  # denormalized for URL routing
-```
-
-**Why cross-reference instead of specialized tables?**
-
-1. **Flexibility**: The same Doha can exist in multiple chapters (variants)
-2. **Query Efficiency**: Single WHERE clause filters by hierarchy (author/work/chapter)
-3. **Content Reuse**: Dictionary entries shared across works, indexed by chapter
-4. **Extensibility**: New content types added without schema migration for hierarchy
-
-**Example**: In Ramcharitmanas, Ayodhya Kand, the Doha "Ram dut atulit bal..." can be:
-- Accessed as `/doha/{doha_id}` (standalone)
-- Browsed as part of `/authors/tulsidas/works/ramcharitmanas/chapters/ayodhya-kand`
-- Found via `/search?author=tulsidas&work=ramcharitmanas&chapter=ayodhya-kand`
-
----
-
-### 1.3 The Canonical Content Tables
-
-#### DohaEntry (Verses)
-
-```python
-class DohaEntry(Base):
-    __tablename__ = "doha_entries"
-    id = Column(Integer, primary_key=True)
-    # Hierarchy cross-references
-    hierarchy_path = Column(String(512), index=True)  # tulsidas/ramcharitmanas/ayodhya-kand/23
-    author_id = Column(Integer, index=True)
-    work_id = Column(Integer, index=True)
-    chapter_id = Column(Integer, index=True)          # FK to work_chapters
-    number_in_chapter = Column(Integer)               # 23 (ordering within chapter)
-    # Content
-    main_text = Column(Text)                          # श्रीरामचन्द्र कृपालु भजु मन
-    meaning = Column(Text)                            # English/Hindi commentary
-    text_devanagari = Column(Text)
-    text_romanized = Column(Text)                     # For search normalization
-    # Metadata
-    status = Column(String(20), default="active")     # draft, active, archived
-    visibility = Column(String(20), default="public") # public, private, restricted
-    version = Column(Integer, default=1)
-    is_canonical = Column(Boolean, default=True)
-    source_submission_id = Column(Integer, unique=True) # backlink to user submission
-    created_by, verified_by = Column(Integer)...
-    is_deleted = Column(Boolean, default=False)
-```
-
-**Key Design Decisions**:
-- `number_in_chapter` enables v1 of deterministic sequencing (see Section 2.1)
-- `hierarchy_path` is denormalized for fast URL resolution (no 3-way join needed)
-- `status` + `is_deleted` provide soft-delete semantics + state machine
-- `source_submission_id` maintains audit trail back to user submission
-
-#### DictionaryEntry, IdiomEntry, ArticleEntry
-
-Similar structure, with content-specific fields:
-
-```python
-# DictionaryEntry
-lemma_devanagari = Column(String(512), index=True)
-lemma_roman = Column(String(512), index=True)
-lemma_roman_norm = Column(String(512), index=True)  # normalized for search
-senses = Column(JSON)  # [{sense: str, example: str}, ...]
-
-# IdiomEntry
-text_devanagari = Column(Text, index=True)
-text_roman = Column(Text)
-meaning = Column(Text)
-examples = Column(JSON)
-region = Column(String(64))
-
-# ArticleEntry
-title = Column(String(512), index=True)
-title_devanagari = Column(String(512))
-body = Column(Text)
-excerpt = Column(Text)
-tags = Column(JSON)
-```
-
-All support hierarchy linking: `author_id`, `work_id`, `chapter_id`, `number_in_chapter`.
-
----
-
-## Part 2: Linked-List Sequencing Logic
-
-### API Headers
-
-#### Global Sorting Policy (MED-001 Resolved)
-
-All list-style API endpoints for canonical content modules must expose a shared ordering contract:
-
-- Query params: `sort`, `order`, `offset`, `limit`
-- Universal default: `sort=created_at&order=desc`
-- Supported modules:
-    - `GET /content/doha`
-    - `GET /articles`
-    - `GET /dictionary`
-    - `GET /idioms`
-
-Standardized sortable fields include canonical timestamps and engagement metrics:
-- `created_at`, `updated_at`
-- `views_count`, `likes_count`, `shares_count`, `bookmarks_count`, `search_hits_count`, `weight_score`
-
-Policy rationale:
-- Predictable newest-first browsing across modules.
-- Transparent override when users explicitly request ranking by metrics.
-- Consistent pagination behavior independent of content type.
-
-### 2.1 Chapter Content Navigation: Prev/Current/Next
-
-**Problem**: Users reading chapter-linked content need deterministic next/previous traversal without returning to chapter listings.
-
-**Solution**: Linked-list-style sequencing without explicit prev/next pointers. The backend uses a generic navigation service that queries adjacent entries by **(chapter_id, number_in_chapter)** with ordered fallbacks.
-
-#### Implementation: `get_content_navigation()`
-
-Location: `backend/app/services/content_service.py`
-
-```python
-def get_content_navigation(db: Session, content_type: str, content_id: int) -> ContentNavigationOut:
-    """
-    Return prev/current/next cards within the same chapter for a supported content type.
-    
-    Ordering strategy (deterministic, non-shuffling):
-    1. Primary: number_in_chapter (handles gapped sequences)
-    2. Secondary: created_at (fallback for unordered entries)
-    3. Tertiary: id (final tiebreaker)
-    """
-    # Resolve current model by content_type and load active record
-    model_class = _get_model_class(content_type)
-    current = _apply_active_content_filters(
-        db.query(model_class),
-        model_class,
-    ).filter(model_class.id == content_id).first()
-    
-    if not current:
-        raise HTTPException(404, "Content not found")
-
-    # Find previous: largest number_in_chapter < current.number_in_chapter
-    if current.number_in_chapter is not None:
-        previous = (_apply_active_content_filters(db.query(model_class), model_class)
-            .filter(
-                model_class.chapter_id == current.chapter_id,
-                model_class.number_in_chapter < current.number_in_chapter,
-            )
-            .order_by(
-                model_class.number_in_chapter.desc(),
-                model_class.created_at.desc(),
-                model_class.id.desc(),
-            )
-            .first()
-        )
-    
-    # Find next: smallest number_in_chapter > current.number_in_chapter
-    if current.number_in_chapter is not None:
-        next_item = (_apply_active_content_filters(db.query(model_class), model_class)
-            .filter(
-                model_class.chapter_id == current.chapter_id,
-                model_class.number_in_chapter > current.number_in_chapter,
-            )
-            .order_by(
-                model_class.number_in_chapter.asc(),
-                model_class.created_at.asc(),
-                model_class.id.asc(),
-            )
-            .first()
-        )
-    else:
-        # Fallback: use created_at for unordered entries
-        previous = (_apply_active_content_filters(db.query(model_class), model_class)
-            .filter(
-                model_class.chapter_id == current.chapter_id,
-                model_class.created_at < current.created_at,
-            )
-            .order_by(model_class.created_at.desc(), model_class.id.desc())
-            .first()
-        )
-        next_item = (_apply_active_content_filters(db.query(model_class), model_class)
-            .filter(
-                model_class.chapter_id == current.chapter_id,
-                model_class.created_at > current.created_at,
-            )
-            .order_by(model_class.created_at.asc(), model_class.id.asc())
-            .first()
-        )
-    
-    return ContentNavigationOut(
-        previous=_to_card(previous) if previous else None,
-        current=_to_card(current),
-        next=_to_card(next_item) if next_item else None,
-    )
-```
-
-#### Response Schema
-
-```python
-class ContentNavCard(BaseModel):
-    id: int
-    number_in_chapter: Optional[int]
-    content_type: Optional[str] = None
-    title: Optional[str] = None
-    short_text: str
-
-class ContentNavigationOut(BaseModel):
-    previous: Optional[ContentNavCard] = None
-    current: ContentNavCard
-    next: Optional[ContentNavCard] = None
-```
-
-#### Endpoint
-
-```python
-@router.get("/doha/{doha_id}/navigation", response_model=ContentNavigationOut)
-def get_doha_navigation_endpoint(doha_id: int, db: Session = Depends(get_db)):
-    return get_content_navigation(db, content_type="doha", content_id=doha_id)
-
-@router.get("/dictionary/{entry_id}/navigation", response_model=ContentNavigationOut)
-def get_dictionary_navigation_endpoint(entry_id: int, db: Session = Depends(get_db)):
-    return get_content_navigation(db, content_type="dictionary", content_id=entry_id)
-
-@router.get("/idiom/{entry_id}/navigation", response_model=ContentNavigationOut)
-def get_idiom_navigation_endpoint(entry_id: int, db: Session = Depends(get_db)):
-    return get_content_navigation(db, content_type="idiom", content_id=entry_id)
-
-@router.get("/article/{entry_id}/navigation", response_model=ContentNavigationOut)
-def get_article_navigation_endpoint(entry_id: int, db: Session = Depends(get_db)):
-    return get_content_navigation(db, content_type="article", content_id=entry_id)
-```
-
-#### Frontend Integration
-
-Files:
-- `frontend/src/pages/doha/[id].astro`
-- `frontend/src/pages/dictionary/[id].astro`
-- `frontend/src/pages/idioms/[id].astro`
-- `frontend/src/pages/articles/[id].astro`
-
-```astro
-let navigation = null;
-
-try {
-    navigation = await api(`/content/dictionary/${id}/navigation`);
-} catch (navErr) {
-    console.warn("[Detail] Navigation fetch failed:", navErr);
-}
-```
-
-Then rendered via:
-
-```astro
-<NavigationControls 
-  previousId={navigation?.previous?.id}
-  nextId={navigation?.next?.id}
-    previousContentType={navigation?.previous?.content_type}
-    nextContentType={navigation?.next?.content_type}
-    previousKind="Definition"
-    nextKind="Definition"
-  previousText={navigation?.previous?.short_text}
-  nextText={navigation?.next?.short_text}
-/>
-```
-
-#### Accessibility Standards (Frontend)
-
-All interactive frontend controls must follow semantic and assistive-technology-safe patterns:
-
-1. Use native `<button>` elements for clickable actions (likes, bookmarks, shares, modal actions) instead of clickable `<div>`/`<span>` wrappers.
-2. Every interactive control must include a descriptive `aria-label` when visible text/icon alone is ambiguous.
-3. Modal/dialog form controls must bind labels with explicit `for`/`id` pairs.
-4. Modal dialogs must provide keyboard-safe behavior: initial focus placement, tab-cycle trapping, and Escape-to-close support.
-
-Reference implementation:
-- `frontend/src/components/interaction/InteractionBar.svelte`
-
-#### SEO & Metadata (Prop-Driven Layout Pattern)
-
-To prevent duplicate metadata and crawler ambiguity, page-level SEO tags must be emitted only by the shared layout.
-
-Policy:
-1. `frontend/src/layouts/BaseLayout.astro` is the single source of truth for `<meta name="description">` and `<link rel="canonical">`.
-2. Detail pages (doha, dictionary, idiom, article) must pass `title`, `description`, and optional `canonicalURL` as props to `BaseLayout`.
-3. Detail pages must not add hard-coded canonical/description tags inside local `<head>` blocks.
-4. Layout fallback rules apply when props are missing (site-wide default description and pathname-derived canonical URL).
-
-Result:
-- Exactly one canonical tag and one description tag per rendered page.
-- Consistent metadata ownership for all new routes.
-
-#### Data Fetching Patterns (Incremental Loading Mandate)
-
-Collection-oriented frontend views must use incremental loading instead of fetch-all/merge loops.
-
-Mandate:
-1. Server-side render only the first page (`offset=0`, bounded `limit`) for fast initial paint.
-2. Hydrated client components append subsequent pages incrementally (Load More and/or Intersection Observer).
-3. Existing rendered rows must be preserved and extended in-place; do not refetch the entire collection on each page step.
-4. Show explicit loading state while fetching additional pages.
-
-Required for:
-- Chapter content lists
-- Search result collections
-- User history collections (likes/bookmarks/submissions)
-
-Reference implementation:
-- `frontend/src/pages/[author]/[work]/[chapter].astro`
-- `frontend/src/components/content/ChapterList.svelte`
-
-#### Handling Edge Cases
-
-1. **No Previous/Next**: Buttons disabled, visually grayed out (CSS class `opacity-50`)
-2. **Gapped Numbering**: If chapter has sparse numbering [1, 3, 5, 10], queries find nearest ordered neighbor
-3. **Unordered Content**: Fallback to created_at ensures deterministic sequencing even without number_in_chapter
-4. **Deleted/Inactive**: Filter excludes is_deleted=True, status != "active"
-
-#### Performance Considerations
-
-- Index on `(chapter_id, number_in_chapter)` added in migration 0015
-- Two-query pattern (one per direction) is acceptable for <100 items per chapter
-- For very large chapters (1000+ entries), consider pagination-based navigation
-
----
-
-### 2.2 Chapter Content Listing
-
-#### Current Implementation
-
-File: `backend/app/api/v1/content.py`
-
-```python
-@router.get("/by-path/{author_slug}/{work_slug}/{chapter_slug}/dohas", 
-            response_model=ChapterDohasOut)
-def list_chapter_dohas_by_path(
-    author_slug: str,
-    work_slug: str,
-    chapter_slug: str,
-    db: Session = Depends(get_db),
-    offset: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=200),
-):
-    """
-    GET /content/by-path/tulsidas/ramcharitmanas/ayodhya-kand/dohas?offset=0&limit=50
-    
-    Returns paginated list of dohas in chapter, sorted by number_in_chapter.
-    """
-    # Resolve hierarchy
-    author = db.query(ClassicalAuthor).filter(
-        ClassicalAuthor.slug == author_slug,
-        ClassicalAuthor.is_deleted == False
-    ).first()
-    if not author:
-        raise HTTPException(404, "Author not found")
-    
-    work = db.query(ClassicalWork).filter(
-        ClassicalWork.author_id == author.id,
-        ClassicalWork.slug == work_slug,
-        ClassicalWork.is_deleted == False
-    ).first()
-    if not work:
-        raise HTTPException(404, "Work not found")
-    
-    chapter = db.query(WorkChapter).filter(
-        WorkChapter.work_id == work.id,
-        WorkChapter.slug == chapter_slug,
-        WorkChapter.is_deleted == False
-    ).first()
-    if not chapter:
-        raise HTTPException(404, "Chapter not found")
-    
-    # Query dohas
-    q = db.query(DohaEntry).filter(
-        DohaEntry.chapter_id == chapter.id,
-        DohaEntry.is_deleted == False,
-        DohaEntry.status == "active",
-    )
-    total = q.count()
-    items = (q
-        .order_by(DohaEntry.number_in_chapter.asc(), DohaEntry.id.asc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
-    
-    return ChapterDohasOut(
-        chapter_id=chapter.id,
-        chapter_slug=chapter.slug,
-        total=total,
-        offset=offset,
-        limit=limit,
-        items=[_serialize_chapter_doha(i) for i in items],
-    )
-```
-
-#### Response Schema
-
-```python
-class ChapterDohaItem(BaseModel):
-    id: int
-    hierarchy_path: Optional[str]
-    chapter_id: Optional[int]
-    number_in_chapter: Optional[int]
-    main_text: str
-    meaning: Optional[str]
-    text_devanagari: Optional[str]
-    text_romanized: Optional[str]
-
-class ChapterDohasOut(BaseModel):
-    chapter_id: int
-    chapter_slug: Optional[str]
-    total: int
-    offset: int
-    limit: int
-    items: List[ChapterDohaItem]
-```
-
-#### Chapter Page Sequence Presentation
-
-The chapter page now displays sequence metadata per card to improve orientation while reading long chapters.
-
-```text
-Verse {index + 1} of {chapterItems.length}
-```
-
-Implementation notes:
-- End-user numbering is explicitly 1-based.
-- Sequence badges are styled through `.sequence-badge` in chapter-specific CSS.
-- Label text is adaptable (`Verse` by default, `Stanza` for poem-like contexts).
-
----
-
-## Part 3: Polymorphic Content Rendering
-
-### 3.1 Engagement Tracking Across Content Types
-
-The **EngagementKPI** table is designed to be **content-type agnostic**:
-
-```python
-class EngagementKPI(Base):
-    __tablename__ = "engagement_kpis"
-    id = Column(Integer, primary_key=True)
-    content_type = Column(String(50), index=True)  # "doha", "dictionary", "idiom", "article"
-    content_id = Column(Integer, index=True)       # FK to respective table
-    views_count = Column(Integer, default=0)
-    search_hits_count = Column(Integer, default=0)
-    likes_count = Column(Integer, default=0)
-    shares_count = Column(Integer, default=0)
-    bookmarks_count = Column(Integer, default=0)
-    weight_score = Column(Float, default=0.0)
-    
-    __table_args__ = (
-        UniqueConstraint("content_type", "content_id"),  # Enforce 1:1
-    )
-```
-
-#### Weight Score Algorithm
-
-```python
-weight_score = 0.6 * log(views + 1) + 0.3 * log(search_hits + 1) + 0.1 * log(likes + 1)
-```
-
-**Rationale**:
-- Views are the primary signal (0.6 weight)
-- Search hits indicate discoverability (0.3)
-- Likes add user preference signal (0.1)
-- Logarithmic scaling prevents single viral entry from dominating
-
-#### Querying Engagement for Multiple Content Types
-
-```python
-# Efficient query for chapter dohas with engagement
-def _doha_query_with_metadata(db: Session):
-    return (
-        db.query(
-            DohaEntry,
-            ClassicalAuthor.name.label("author_name"),
-            ClassicalWork.title.label("work_name"),
-            WorkChapter.title.label("chapter_name"),
-            EngagementKPI.views_count.label("views_count"),
-            EngagementKPI.likes_count.label("likes_count"),
-            EngagementKPI.shares_count.label("shares_count"),
-            EngagementKPI.bookmarks_count.label("bookmarks_count"),
-            EngagementKPI.search_hits_count.label("search_hits_count"),
-            EngagementKPI.weight_score.label("weight_score"),
-        )
-        .outerjoin(ClassicalAuthor, ClassicalAuthor.id == DohaEntry.author_id)
-        .outerjoin(ClassicalWork, ClassicalWork.id == DohaEntry.work_id)
-        .outerjoin(WorkChapter, WorkChapter.id == DohaEntry.chapter_id)
-        .outerjoin(
-            EngagementKPI,
-            and_(
-                EngagementKPI.content_type == "doha",
-                EngagementKPI.content_id == DohaEntry.id,
-            ),
-        )
-    )
-```
-
-All content-node API payloads (`doha`, `dictionary`, `idiom`, and `article`) include these engagement fields in response schemas and serialization output with safe defaults:
-
-```text
-views_count, likes_count, shares_count, bookmarks_count, search_hits_count, weight_score
-```
-
-Default handling contract:
-- Integer metrics default to `0`
-- `weight_score` defaults to `0.0`
-
-### 3.2 Interaction System API Parity (Likes + Bookmarks)
-
-Both likes and bookmarks now have bi-directional API support for create/read/delete semantics.
-
-Implemented endpoints:
-- `POST /interactions/toggle`:
-    - Create: toggling a missing interaction creates an active row.
-    - Delete: toggling an active interaction marks it inactive (`is_active = false`) and removes it from list views.
-- `GET /interactions/users/{user_id}/bookmarks`:
-    - Paginated user bookmark retrieval with content previews.
-- `GET /interactions/users/{user_id}/likes`:
-    - Paginated user like retrieval with content previews.
-
-Access control:
-- Retrieval endpoints are owner-or-admin only.
-
-Dashboard parity:
-- User dashboard renders both Bookmarks and Likes tabs from dedicated APIs with pagination (`offset`/`limit`) and active-only filtering.
-
-Integrity guarantee:
-- Un-liking content sets `is_active = false` and it no longer appears in dashboard likes lists.
-
-### 3.3 User & Social System: Public Stats Aggregation
-
-Public profile analytics are exposed through:
-
-- `GET /users/{username}/stats`
-
-Response contract (`UserStatsOut`):
-
-```python
-class UserStatsOut(BaseModel):
-     username: str
-     contributions_count: int  # approved public canonical contributions only
-     likes_received: int       # likes on approved public canonical contributions
-     most_liked_content_id: Optional[int]
-     average_engagement_score: float  # avg KPI weight_score on same scoped set
-     joined_date: datetime
-```
-
-Analytics scope policy (MED-002 resolved):
-- Single source set: approved + public + non-deleted canonical contributions authored by the user.
-- This set is built as a polymorphic union across canonical modules:
-    - `doha_entries` (plus `status=active`, `is_canonical=true`, `visibility=public`, `is_deleted=false`)
-    - `dictionary_entries` (`visibility=public`)
-    - `idiom_entries` (`visibility=public`)
-    - `article_entries` (`visibility=public`)
-- Each canonical row must be linked to a `submissions` row where:
-    - `status=approved`
-    - `visibility=public`
-    - `is_deleted=false`
-
-Aggregation rules:
-
-1. `contributions_count`:
-    - Count canonical rows in the scoped union (not raw submissions).
-2. `likes_received`:
-    - Left join `engagement_kpis` on `(content_type, content_id)` for the same union and compute `SUM(likes_count)`.
-3. `average_engagement_score`:
-    - Compute `AVG(weight_score)` on the same joined set and default to `0.0` when empty.
-4. `most_liked_content_id`:
-    - Select top row ordered by `likes_count DESC`, then `content_id ASC`; return `null` when no scoped contributions exist.
-
-Privacy contract:
-
-- Endpoint is public (no auth required) for profile visibility.
-- No private identity fields are returned (email, password hash, tokens, moderation data).
-- Draft/rejected/private/deleted contributions are excluded from all user-facing metrics.
-- All profile rollups use one transparent scope so dashboard numbers remain internally consistent.
-
----
-
-## Part 4: Schematic Improvements & Data Integrity
-
-### 4.1 Migration History & Schema Evolution
-
-| # | Migration | Key Changes |
-|---|-----------|------------|
-| 0001 | Create Auth Tables | users, refresh_tokens, oauth_accounts |
-| 0002 | User Role Index | Added role-based indexing |
-| 0003 | Hierarchy Tables | classical_authors, classical_works, work_chapters |
-| 0004 | Submissions | submissions table with status machine |
-| 0005 | Moderation | moderation_logs, moderation_guidelines |
-| 0006 | Doha Entries | doha_entries, content_versions |
-| 0007 | Fulltext Index | MySQL FULLTEXT on doha main_text |
-| 0008 | Engagement | engagement_kpis, user_interactions, share_logs, reports |
-| 0009 | Rate Limiting | rate_limit_counters with atomic upsert |
-| 0010 | System Settings | system_settings key-value store |
-| 0011 | Audit Logging | audit_logs for all user actions |
-| 0012 | Content Types | dictionary_entries, idiom_entries, article_entries |
-| 0013 | Interactions v2 | Enhanced user_interactions with metadata |
-| **0014** | **Schema Drift Fix** | **Reconciled model/migration drift (CRITICAL)** |
-| 0015 | Indexes | Added composite index on (chapter_id, number_in_chapter) |
-
-### 4.2 Critical Schema Drift Resolution (Migration 0014)
-
-**Problem**: Model and migration drift caused runtime 500 errors:
-- Model expects `submissions.external_references`, but migration created `references`
-- Model expects `system_settings.setting_key`, but migration created `key`
-- `alembic_version.version_num` VARCHAR(32) was too short for long revision IDs
-
-**Resolution** (Migration 0014):
-```python
-# Step 1: Rename submissions.references -> external_references
-op.alter_column('submissions', 'references', new_column_name='external_references')
-
-# Step 2: Rename system_settings.key -> setting_key
-op.alter_column('system_settings', 'key', new_column_name='setting_key')
-
-# Step 3: Widen alembic_version.version_num
-op.alter_column('alembic_version', 'version_num', 
-                existing_type=VARCHAR(32),
-                type_=VARCHAR(255))
-```
-
-### 4.3 Database Integrity Guardrail (CI Enforced)
-
-The repository now includes a schema contract guardrail that blocks merges when ORM metadata and migration-produced schema diverge.
-
-Implementation:
-- `backend/scripts/schema_contract_check.py`
-- CI step: `Schema Contract Check` in `.github/workflows/test.yml`
-
-Contract scope:
-1. Build expected schema from `app.db.models.Base.metadata`
-2. Apply `alembic upgrade head` to a temporary SQLite database
-3. Inspect physical schema with SQLAlchemy inspector
-4. Compare table/column presence, normalized type affinity, and nullability
-5. Fail with a detailed diff and non-zero exit status on mismatch
-
-### 4.4 Lessons Learned from DATA-001
-
-Historical schema drift caused runtime faults when model and migration column names diverged (`references` vs `external_references`, `key` vs `setting_key`).
-
-Permanent safeguards now in place:
-1. **Pre-migration Testing**: Migration smoke checks against a clean database
-2. **Schema Contract Validation**: CI-enforced metadata-vs-migration comparison
-3. **Regression Documentation**: Drift incidents archived in architecture/changelog context
-
----
-
-## Part 5: Authorization & Moderation
-
-### 5.1 Role-Based Access Control
-
-```python
-class User(Base):
-    role = Column(String(50), default="registered")     # registered, moderator, admin
-    permissions = Column(Integer, default=0)             # Bitfield for fine-grained perms
-    permission_scopes = Column(JSON)                     # e.g., {"moderate": ["doha"], "admin": ["hierarchy"]}
-```
-
-#### Role Hierarchy
-
-| Role | Can Do |
-|------|--------|
-| **registered** | Submit content, like/bookmark, view public content |
-| **moderator** | Review submissions, approve/reject, comment |
-| **admin** | Manage hierarchy, manage users, bulk operations |
-
-### 5.2 Moderator Inline Metadata Editing (LOGICAL-001 Resolved)
-
-The submission update flow now supports moderator/admin inline correction of hierarchy metadata without forcing contributor rejection loops.
-
-Implemented in `backend/app/api/v1/submissions.py`:
-- `SubmissionUpdateIn` includes `author_slug`, `work_slug`, `chapter_slug`, `number_in_chapter`, and `is_classical`.
-- Metadata writes are role-gated: only moderator/admin can edit hierarchy fields.
-- Contributor edits remain limited to allowed statuses (`draft`, `rejected`) and non-metadata fields.
-- Hierarchy references are revalidated against `ClassicalAuthor`, `ClassicalWork`, and `WorkChapter` before commit.
-- Update endpoint returns detailed payload (`SubmissionDetailOut`) including timestamps for moderation UI refresh.
-
-Verified behavior:
-- Moderator can update `number_in_chapter`/slugs for pending submissions.
-- Regular users receive 403 when attempting hierarchy metadata edits.
-- Regular text-only edits continue to work for eligible contributor-owned submissions.
-
-### 5.3 Unified Submission-to-Canonical Pipeline (CRIT-002 Resolved)
-
-Submission and moderation contracts are aligned across all content types (`doha`, `dictionary`, `idiom`, `article`) with a single moderation approval path that materializes canonical entries from submission data.
-
-Alignment status:
-- **Doha**: `main_text` and `meaning` map into canonical `doha_entries` and `content_versions`.
-- **Dictionary**: `external_references` carries lexical structure (`lemma_devanagari`, `lemma_roman`, `senses`) for canonical dictionary creation.
-- **Idiom**: frontend submission captures **Romanized Text** and sends `external_references.text_roman`; moderation canonicalization validates it through `IdiomPayload` and persists it into `idiom_entries.text_roman`.
-- **Article**: title/body metadata is resolved from submission fields plus `external_references` and persisted into canonical `article_entries`.
-
-Result:
-- No content type now depends on an uncollected frontend field during moderation approval.
-- Submission-to-canonical transformation is contract-aligned for all four canonical tables.
-
----
-
-## Part 6: Integration Points & Future Extensibility
-
-### 6.1 Adding a New Content Type (e.g., Chaupai)
-
-1. **Create new table** (MODEL)
-   ```python
-   class ChauPaiEntry(Base):
-       __tablename__ = "chaupai_entries"
-       # ... standard fields + hierarchy linking
-   ```
-
-2. **Add migration** (ALEMBIC)
-   ```bash
-   alembic revision --autogenerate -m "add_chaupai_entries"
-   ```
-
-3. **Create API endpoints** (REST)
-   ```python
-   @router.get("/content/chaupai", response_model=List[ChauPaiOut])
-   def list_chaupais(...): ...
-   
-   @router.get("/content/chaupai/{id}/navigation", response_model=ChauPaiNavigationOut)
-   def get_chaupai_navigation(...): ...
-   ```
-
-4. **Create frontend page** (ASTRO)
-   ```astro
-   // /chaupai/[id].astro
-    import NavigationControls from "../components/navigation/NavigationControls.svelte";
-   ```
-
-5. **Extend EngagementKPI** (optional, already supports via content_type)
-
-### 6.2 Universal NavigationControls Component
-
-`NavigationControls.svelte` is a universal frontend component intended for all content detail pages (`doha`, `dictionary`, `idiom`, `article`).
-
-Frontend Component Library classification:
-- **Global Content Component**: `frontend/src/components/navigation/NavigationControls.svelte`
-- Purpose: Consistent previous/next navigation UX across all chapter-linked content detail routes.
-- UX contract: Type-aware route resolution plus contextual labels such as "Next Definition" and "Next Article".
-
-Current behavior:
-- Active for all content detail pages that can resolve chapter-linked navigation payloads.
-- For content records without hierarchy linkage (for example article rows without `chapter_id`), navigation endpoints intentionally return not found and UI should keep controls hidden.
-
-Component contract:
-- Supports `previousId`/`nextId` and optional `previousHref`/`nextHref` for type-agnostic routing.
-- Parent pages should render only when previous/next navigation targets are present.
-
-### 6.3 Future Scalability & Optimizations
-
-### Search & Discovery
-
-#### Fan-out Pattern for Multi-Category Search (HIGH-001 Resolved)
-
-The search page applies a filter-aware fan-out policy in SSR request orchestration:
-
-1. Read the user-selected `type` filter (`all`, `doha`, `dictionary`, `idiom`, `article`).
-2. Build only the API request set needed for that filter.
-3. Execute the selected requests in parallel with `Promise.allSettled`.
-4. Render only the matching result sections in the response DOM.
-
-Behavior by filter:
-- `type=all`: fan out to all category endpoints (`/search`, `/dictionary`, `/idioms`, `/articles`).
-- `type=dictionary`: call only dictionary search endpoint.
-- `type=idiom`: call only idiom search endpoint.
-- `type=doha`: call only doha search endpoint.
-- `type=article`: call only article search endpoint.
-
-Lifecycle impact:
-- User preference is applied before network fan-out, reducing unnecessary API calls.
-- Filtered mode lowers backend load and response payload size.
-- Rendering stays aligned with the selected category, avoiding cross-category visual noise.
-
-### Security & Logging Policy
-
-Server-side rendering and API orchestration must follow these logging constraints:
-
-1. Never log user-generated input values (search queries, form text, free-text metadata) to server console output in production.
-2. Never log full API response payloads containing user-generated content.
-3. If diagnostics are required, guard them with `import.meta.env.DEV` and keep messages high-level.
-4. Error logs should use generic categories/status only (for example, `Search API Error [IDIOM]: 500`) without embedding query text.
-
-This policy applies to search, submissions, moderation tooling, and any SSR route that handles contributor or reader input.
-
-This section archives low-priority optimization ideas that are currently not justified by observed latency.
-
-#### [OPTIMIZATION-001] Chapter Page Fallbacks
-
-Archived assessment:
-- Current chapter route `frontend/src/pages/[author]/[work]/[chapter].astro` already uses `GET /content/by-path/{author}/{work}/{chapter}/dohas`.
-- Chapter fetch path is stable in runtime checks and remains under 100ms in local profiling.
-- The previously proposed `GET /content/by-path-bulk/{author}/{work}/{chapter}` endpoint would duplicate existing behavior without measurable gain at current load.
-
-Measured baseline (local, 5 runs):
-- `GET /content/by-path/tulsidas/ramcharitmanas/baal-kaand/dohas?offset=0&limit=100`: ~5-6ms median
-
-Decision:
-- **Archive for Future**.
-- Reconsider only when chapter traffic or chapter size trends make hierarchy resolution a confirmed bottleneck.
-
-#### [OPTIMIZATION-002] Eager Loading Navigation
-
-Archived assessment:
-- Current Doha detail page uses two calls:
-    1. `GET /content/doha/{id}`
-    2. `GET /content/doha/{id}/navigation`
-- This separation keeps list payloads lean and avoids adding navigation objects to non-detail responses.
-- A detail-only schema (`DohaDetailOut` extends `DohaOut` with optional `navigation`) remains the preferred future design if/when a single-round-trip path is needed.
-
-Measured baseline (local, 5 runs):
-- `GET /content/doha/4`: ~3-4ms median
-- `GET /content/doha/4/navigation`: ~4-6ms median
-
-Decision:
-- **Archive for Future**.
-- Implement only when end-to-end page metrics show navigation call overhead is material in production latency budgets.
-
-Operational note:
-- If implemented later, use `DohaDetailOut` only on detail endpoints so `GET /content/doha` list/search payloads remain compact.
-
----
-
-## Documentation Governance (LOW-001)
-
-**Principle**: Single source of truth prevents status drift across documentation files.
-
-### Authority Hierarchy
-
-1. **Primary Authority**: `z_documentation/issues/Issues.md`
-   - Only file containing current project status and issue tracking
-   - Updated immediately when implementation status changes
-   - Referenced by all other documentation for status verification
-
-2. **Secondary References** (Technical Details Only):
-   - `Architecture.md` – Design decisions and architectural rationale
-   - `MODULE_STATUS_REPORT.md` – Per-module implementation breakdown (historical reference)
-   - `RUNTIME_ANALYSIS.md` – Performance metrics and diagnostic observations
-   - `API_REFERENCE.md` – API contract specifications
-   - `CONTENT_DELIVERY_ARCHITECTURE.md` – Detailed design explanations
-
-3. **README.md** (Navigation & Governance)
-   - Establishes single-authority pattern
-   - Links all documentation back to Issues.md for current status
-   - Documents maintenance rules for consistency
-
-### Maintenance Rules (CRITICAL)
-
-When implementation status changes:
-
-1. **Update Issues.md first** – Add completed item with `[COMPLETED - CATEGORY]` prefix or update Open status
-2. **Reflect architectural changes** in Architecture.md and supporting docs only after Issues.md is updated
-3. **Do NOT add status claims** in any file except Issues.md (prevents drift)
-4. **Link supporting docs** back to Issues.md for readers seeking current status
-5. **Preserve supporting docs** as stable technical references; update for design rationale only
-
-### Why This Pattern
-
-- **Prevents Drift**: Readers know to check one file for status
-- **Establishes Accountability**: Changes are traceable to Issues.md entries
-- **Enables Audit Trail**: master_project_audit_and_tasks.md reflects Issues.md resolution history
-- **Scales with Project**: Pattern remains consistent as documentation grows
-
----
-
-## Conclusion
-
-
-This architecture achieves:
-- ✅ **Strict hierarchical integrity** via FK constraints
-- ✅ **Polymorphic content** via cross-reference fields
-- ✅ **Efficient sequencing** via (chapter_id, number_in_chapter) queries
-- ✅ **Unified engagement** via normalized EngagementKPI table
-- ✅ **Audit trails** via moderation_logs and content_versions
-- ✅ **Deterministic ordering** via fallback chains
-- ✅ **Schema safety** via migrations + testing
-
-**Next Steps**: See Issues.md for current gaps and remediation roadmap.
-
----
-
-## Appendix: Routing Standards
-
-### Static-First Rule (FastAPI)
-
-To prevent dynamic path parameters from shadowing fixed endpoints, all routers must follow this declaration order:
-
-1. Fixed/static paths first
-2. Static-prefix plus dynamic segment next
-3. Fully dynamic catch-all segments last
-
-Example for article router (`/articles`):
-
-```python
-@router.get("/tags/list")
-def list_all_tags(...):
-    ...
-
-@router.get("/recent/list")
-def get_recent_articles(...):
-    ...
-
-@router.get("/by-tag/{tag}")
-def get_articles_by_tag(...):
-    ...
-
-@router.get("/{article_id}")
-def get_article(article_id: int, ...):
-    ...
-```
-
-Why this standard is required:
-- FastAPI matches routes in declaration order.
-- If a dynamic route like `/{article_id}` appears above `/recent/list`, the literal `recent` can be parsed as `article_id` and fail integer validation.
-- Static-first ordering preserves 100% reachability for documented API paths.
-
-Scope:
-- Apply this pattern across all domain routers (`doha`, `dictionary`, `idiom`, `article`, and future modules).
+# Awadhi Hub Architecture
+
+Last updated: March 28, 2026  
+Status: Verified against implementation  
+Scope: Hierarchical Poetry Expansion plus Sitewide UI Overhaul
+
+## 0) Purpose and Audience
+
+This document is the canonical technical map for Awadhi Hub. It is written for:
+
+1. Backend engineers designing schema, API, and service behavior.
+2. Frontend engineers implementing rendering, interaction, and accessibility patterns.
+3. QA engineers validating cross-layer contracts.
+4. Technical writers and maintainers synchronizing public and internal documentation.
+
+When this document and code disagree, code is the current runtime truth and this document must be updated in the same change window.
+
+## 0.1 Architecture Principles
+
+Awadhi Hub implementation follows these principles:
+
+1. Hierarchy first: author -> work -> chapter anchors all literary context.
+2. Deterministic sequencing: chapter_id plus sequence_no is the poetry navigation source of truth.
+3. Domain separation: poetry expansion does not collapse dictionary, idiom, or article into one schema.
+4. Progressive rendering: unknown poetry types must still render safely.
+5. Contract stability: API schema changes must be explicit, versioned, and tested.
+6. Documentation parity: architectural claims are valid only when verifiable in source.
+
+## 1) System Map
+
+Awadhi Hub is implemented as a dual-domain platform:
+
+1. Poetry domain: chapter-sequenced, polymorphic literary nodes backed by poetry_nodes.
+2. Knowledge domain: dictionary, idiom, and article modules preserved as separate canonical entities.
+
+This is an intentional architecture boundary. Poetry expansion and navigation are unified. Knowledge modules remain isolated by schema and workflow.
+
+## 1.1 Runtime Topology
+
+1. Frontend application: Astro pages with Svelte interactive islands.
+2. API layer: FastAPI route modules grouped by domain.
+3. Service layer: business logic for search, moderation, poetry navigation, and content operations.
+4. Data access layer: SQLAlchemy ORM models plus Alembic migrations.
+5. Storage: MySQL relational schema with JSON fields for bounded flexible metadata.
+
+## 1.2 Layer Ownership
+
+1. Route handlers validate input/output contracts and authorization.
+2. Services enforce ordering, domain rules, and side effects.
+3. ORM entities define persistence shape and cross-entity relationships.
+4. Migrations are the authoritative historical schema evolution log.
+
+No business rule should be enforced only in UI.
+
+## 2) Data Layer
+
+### 2.1 Canonical hierarchy
+
+All chapter-bound literary navigation depends on:
+
+1. classical_authors
+2. classical_works
+3. work_chapters
+
+This graph is the source of route context and ordering scope.
+
+### 2.2 Polymorphic poetry model
+
+Poetry is implemented in poetry_nodes with a value discriminator:
+
+1. poetry_type identifies the form, including doha, chaupai, jhulana, sorath, savaiya, ghanakshari, chappay, and other_poetry.
+2. sequence_no provides deterministic order inside each chapter.
+3. UniqueConstraint(chapter_id, sequence_no) enforces one sequence slot per chapter.
+4. poetry_type_registry provides active form metadata for UI discovery.
+
+Important note: the discriminator is column-based, not SQLAlchemy class polymorphism. Form-specific schema differences are modeled through shared fields plus prosody_metadata JSON.
+
+## 2.2.1 Poetry node canonical fields
+
+Core fields carry these responsibilities:
+
+1. author_id, work_id, chapter_id: hierarchy linkage and route context.
+2. poetry_type: presentation and filter classification.
+3. sequence_no: deterministic chapter order.
+4. main_text: canonical display payload.
+5. text_devanagari, text_romanized: script and transliteration support.
+6. meaning: optional interpretive context.
+7. prosody_metadata: optional meter/form metadata.
+8. status, visibility, is_deleted: publication and lifecycle controls.
+
+## 2.2.2 Registry model behavior
+
+poetry_type_registry supports:
+
+1. Human-readable display_name.
+2. Family classification for grouping.
+3. Active toggle without code deploy.
+4. Optional renderer hints for future dispatch automation.
+
+### 2.3 Migration posture
+
+Migration 0016_poetry_nodes_foundation is active and performs:
+
+1. Table creation for poetry_nodes and poetry_type_registry.
+2. Canonical doha backfill into poetry_nodes.
+3. Poetry type seed insertion, including other_poetry.
+
+## 2.3.1 Data migration guarantees
+
+Migration and backfill guarantees:
+
+1. Canonical doha entries migrate into poetry_nodes with poetry_type=doha.
+2. Sequence assignment is chapter-local and deterministic.
+3. Backfill verifies expected count parity and fails closed on mismatch.
+4. Source lineage metadata remains available for moderation/audit traceability.
+
+### 2.4 Knowledge modules remain independent
+
+The following modules are not merged into poetry_nodes:
+
+1. dictionary_entries
+2. idiom_entries
+3. article_entries
+
+Reason: these are semantic knowledge resources, not chapter-sequenced poetic units.
+
+## 2.5 Data integrity and indexing
+
+Expected database integrity controls:
+
+1. Unique constraint on chapter_id and sequence_no.
+2. Supporting indexes on chapter sequence, work/chapter, and poetry_type.
+3. Foreign keys from poetry_nodes to hierarchy entities.
+4. Optional source_submission_id uniqueness for canonicalization mapping.
+
+Expected query shape:
+
+1. Chapter streams: indexed chapter + sequence scan.
+2. Navigation: chapter-filtered nearest sequence lookup.
+3. Search: filtered text matching with bounded limit and offset.
+
+## 3) Service and API Layer
+
+### 3.1 Poetry navigation contract
+
+Poetry navigation is implemented using chapter_id plus sequence_no as the single canonical resolver.
+
+Primary endpoints:
+
+1. GET /api/v1/poetry/chapters/{chapter_id}/stream
+2. GET /api/v1/poetry/chapters/{chapter_id}/nav?sequence_no={n}
+3. GET /api/v1/poetry/{poetry_node_id}
+4. GET /api/v1/poetry/types
+5. GET /api/v1/poetry/search
+
+Navigation behavior:
+
+1. Locate current node by exact chapter and sequence.
+2. Resolve previous and next by nearest lower and higher sequence in chapter scope.
+3. Return hierarchy context (author, work, chapter) with current and nav summaries.
+
+## 3.1.1 API contract notes
+
+1. chapter stream endpoint returns hierarchy context plus paginated items.
+2. nav endpoint returns current plus optional previous and next summaries.
+3. detail endpoint returns current node contract for direct linking.
+4. types endpoint returns active poetry type metadata for UI controls.
+5. search endpoint supports author/work/chapter filtering and optional poetry_type narrowing.
+
+### 3.2 Search fan-out model
+
+The frontend search experience selectively fans out to:
+
+1. doha search
+2. poetry search
+3. dictionary
+4. idiom
+5. article
+
+Fan-out is conditional on active filter state, not unconditional multi-request spam.
+
+## 3.2.1 Search request lifecycle
+
+1. Build shared query parameters from user input.
+2. Spawn domain-specific requests only for eligible filters.
+3. Resolve all requests with per-section failure isolation.
+4. Render available sections even when one section fails.
+
+This behavior avoids full-page failure due to one downstream endpoint error.
+
+### 3.3 Submission and moderation data consistency
+
+Idiom submission payloads require romanized text in metadata for both create and edit flows.
+Backend idiom validation enforces external_references.text_roman parity across lifecycle updates.
+
+## 3.3.1 Moderation and canonicalization flow
+
+1. User submits draft payload with content-specific metadata.
+2. Moderation queue validates and reviews submission.
+3. Approved submissions materialize into canonical module entities.
+4. For poetry submissions, canonical data is represented in poetry_nodes and surfaced through chapter stream APIs.
+
+## 3.4 Security and policy boundaries
+
+1. Auth-protected write endpoints require valid user identity.
+2. Role checks gate moderator/admin actions.
+3. Visibility and status filters prevent accidental exposure of non-public content.
+4. Rate limiting and bounded pagination reduce abuse surface for search-heavy routes.
+
+## 4) Presentation Layer
+
+### 4.1 Sitewide design system
+
+The UI overhaul is live with shared primitives and tokens:
+
+1. Global style tokens are centralized in frontend/src/styles/global.css.
+2. Reusable primitives are in frontend/src/components/ui (Button, Badge, ContentCard).
+3. Shared motion, surface, spacing, and typography rules are applied across search and content pages.
+
+## 4.1.1 Design token intent
+
+Global tokens centralize:
+
+1. Color roles (background, surface, foreground, accent, semantic cues).
+2. Spacing scale for layout consistency.
+3. Radius and shadow system for visual hierarchy.
+4. Typographic families for brand-consistent reading experience.
+
+Component authors should consume tokens instead of introducing one-off values.
+
+### 4.2 Poetry renderer dispatcher
+
+Poetry rendering uses a dispatcher component:
+
+1. Normalize poetry_type.
+2. Select specialized renderer when mapped.
+3. Fall back to GenericPoetryRenderer for unmapped forms.
+
+This enables immediate rendering for newly approved forms before dedicated visual treatment is shipped.
+
+## 4.2.1 Renderer strategy
+
+1. Specialized renderers exist for priority forms.
+2. Generic renderer protects delivery continuity for new or rare forms.
+3. Renderer map updates are additive and do not require route rewrites.
+4. Unknown types should never hard-fail user reading flow.
+
+## 4.2.2 Observability and telemetry
+
+Fallback rendering emits a structured telemetry event to make unmapped poetry types measurable.
+
+Event contract:
+
+1. event_name: fallback_renderer_used
+2. poetry_type: unresolved poetry type that triggered GenericPoetryRenderer
+3. chapter_id: chapter context when available
+4. sequence_no: chapter-local sequence number of the rendered item
+
+Runtime behavior:
+
+1. Development mode logs the payload through console.warn for local diagnostics.
+2. Production mode sends a non-blocking POST request to /api/v1/telemetry/renderer-fallback.
+3. Telemetry emission is best-effort and never blocks content rendering.
+
+## 4.2.3 Other category for unknown poetry
+
+The other_poetry type supports bounded rich media through prosody_metadata.
+
+Allowed payload contract:
+
+1. prosody_metadata.media.type: image or audio.
+2. prosody_metadata.media.url: non-empty URL string.
+3. prosody_metadata.media.alt_text: required for image, optional for audio.
+
+Reference shape:
+
+1. {
+2.   "media": {
+3.     "type": "image" | "audio",
+4.     "url": "https://cdn.example/media/file",
+5.     "alt_text": "Descriptive text for image or audio context"
+6.   }
+7. }
+
+Rendering policy:
+
+1. Generic fallback renderer attempts media rendering only when contract fields are valid.
+2. Image media uses responsive lazy-loaded rendering and preserves alt text semantics.
+3. Audio media uses native controls with non-blocking preload behavior.
+4. Malformed or missing media payload never crashes the reader and gracefully degrades to text-only rendering.
+
+### 4.3 Search UX implementation
+
+Search is implemented with production-grade interaction behavior:
+
+1. Debounced input updates.
+2. AbortController-based cancellation of stale requests.
+3. Dynamic poetry type options loaded from /api/v1/poetry/types.
+4. Conditional section rendering based on selected content filter and result presence.
+5. URL state synchronization for query and filters.
+
+## 4.3.3 Frontend State & Hydration Strategy
+
+This section defines mandatory client-side strategy rules for Astro plus Svelte.
+
+Hydration directive rules:
+
+1. Use client:load only for above-the-fold, immediately interactive controls.
+2. Use client:visible for below-the-fold modules that can defer JS until viewport entry.
+3. Use client:idle for non-critical enhancements that do not block first interaction.
+4. Prefer SSR/static Astro markup when no client interactivity is required.
+
+State management rules:
+
+1. Shared auth/session state must be store-based and deduplicated across component instances.
+2. Avoid repeated auth/me fetches from multiple mounted components.
+3. Keep local component state local; promote to shared store only when cross-component synchronization is required.
+4. Use explicit loading and error states in stores for predictable rendering.
+
+Client fetch and concurrency rules:
+
+1. Use AbortController for cancellable queries and unmount-safe fetch flows.
+2. Use Promise.all for independent requests to avoid avoidable waterfalls.
+3. Cap fan-out where aggregate endpoints are unavailable.
+4. Guard response normalization with defensive type checks before rendering.
+
+Error-handling rules:
+
+1. Component-level failures must degrade gracefully instead of crashing page-level rendering.
+2. Unknown content metadata must render via safe fallbacks.
+3. Surface user-safe errors in UI and reserve diagnostic detail for development logs.
+
+## 4.3.1 Accessibility behavior expectations
+
+Search and reader surfaces must maintain:
+
+1. Keyboard-reachable controls.
+2. Visible focus states.
+3. Proper labels on inputs and selectors.
+4. Live region support for loading and result updates where needed.
+
+## 4.3.2 Error handling expectations
+
+1. Avoid exposing raw backend internals in client error messages.
+2. Keep section-level fallback states for partial failures.
+3. Preserve prior user context (filters/query) after recoverable failures.
+
+### 4.4 SEO and metadata system
+
+SEO tags are centralized in BaseLayout.astro with canonical, OpenGraph, and Twitter metadata generated once per page render. The duplicate page-level tag pattern has been removed from current Astro pages.
+
+## 4.4.1 Metadata contract
+
+All pages should pass title and description through shared layout props to avoid duplicate tags and inconsistent SEO behavior.
+
+## 5) Boundary Contracts
+
+### 5.1 Poetry boundary
+
+Poetry expansion applies only to chapter-sequenced forms. Adding a new form should not require a new content table.
+
+### 5.2 Knowledge boundary
+
+Dictionary, idiom, and article modules keep dedicated storage and workflows. They may link to hierarchy metadata but are not part of the chapter-sequenced poetry stream.
+
+## 5.3 Anti-patterns to avoid
+
+1. Creating new table-per-poetry-form schemas for chapter-sequenced content.
+2. Mixing dictionary or idiom semantics into poetry_nodes.
+3. Encoding critical navigation logic only in frontend state.
+4. Bypassing status/visibility filters in read APIs.
+
+## 6) Verified Risks and Technical Debt
+
+The architecture is aligned with code and there are currently no active technical debt items in the tracker.
+
+## 6.1 Operational risks under growth
+
+1. Chapter size growth can pressure stream payload and render cost.
+2. Search fan-out across domains increases network concurrency and retry complexity.
+3. Registry and renderer drift can occur if new types are added without renderer governance.
+
+Mitigation posture:
+
+1. Keep stream pagination bounded.
+2. Track fallback-rendered type counts.
+3. Add targeted integration tests for new type onboarding.
+
+## 7) Definition of Done for Future Architecture Changes
+
+Every architecture-impacting merge must:
+
+1. Update this document and endpoint references in the same change window.
+2. Add or update automated tests for contract behavior.
+3. Update active issue tracker by removing completed items and adding only net-new debt.
+
+## 8) Validation Matrix
+
+Minimum validation required before merge for architecture-impacting changes:
+
+1. Backend unit tests for service ordering and contract behavior.
+2. API tests for response shape and filter semantics.
+3. Frontend interaction tests for search filter, debounce, and conditional rendering.
+4. Migration verification for schema and backfill integrity.
+5. Manual smoke pass for chapter navigation and SEO metadata rendering.
+
+## 9) Change Log Guidance
+
+When editing this architecture document:
+
+1. Record only current-state truth and active technical debt.
+2. Move historical details to archive notes, not primary architecture baseline.
+3. Keep endpoint names and invariants synchronized with source code.

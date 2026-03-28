@@ -1,19 +1,19 @@
 # app/auth/jwt.py
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.core.settings import settings
 from typing import Dict, Any
 
 def create_access_token(user_id: int, expires_seconds: int | None = None) -> str:
     expires_seconds = expires_seconds or settings.JWT_ACCESS_TOKEN_EXPIRES_SECONDS
-    exp = datetime.utcnow() + timedelta(seconds=int(expires_seconds))
+    exp = datetime.now(timezone.utc) + timedelta(seconds=int(expires_seconds))
     payload: Dict[str, Any] = {"sub": str(user_id), "exp": exp, "type": "access"}
     token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     return token
 
 def create_refresh_token(user_id: int, expires_seconds: int | None = None) -> str:
     expires_seconds = expires_seconds or settings.JWT_REFRESH_TOKEN_EXPIRES_SECONDS
-    exp = datetime.utcnow() + timedelta(seconds=int(expires_seconds))
+    exp = datetime.now(timezone.utc) + timedelta(seconds=int(expires_seconds))
     payload: Dict[str, Any] = {"sub": str(user_id), "exp": exp, "type": "refresh"}
     token = jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     return token
@@ -21,7 +21,7 @@ def create_refresh_token(user_id: int, expires_seconds: int | None = None) -> st
 
 def create_password_reset_token(user_id: int, expires_seconds: int | None = None) -> str:
     expires_seconds = expires_seconds or settings.PASSWORD_RESET_TOKEN_EXPIRES_SECONDS
-    exp = datetime.utcnow() + timedelta(seconds=int(expires_seconds))
+    exp = datetime.now(timezone.utc) + timedelta(seconds=int(expires_seconds))
     payload: Dict[str, Any] = {
         "sub": str(user_id),
         "exp": exp,

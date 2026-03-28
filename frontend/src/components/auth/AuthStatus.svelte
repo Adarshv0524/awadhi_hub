@@ -1,5 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { get } from "svelte/store";
+
+  import { authSession, clearAuthSession, ensureAuthLoaded } from "../../lib/stores/authSession";
 
   // prefer the Vite/astro env var; fallback in DEV to localhost
   const API_BASE =
@@ -7,8 +10,8 @@
 
   export let minimal = false; // if true render only role (used in footer)
 
-  let loading = true;
   export let user: any = null;
+  let loading = true;
   let dropdownOpen = false;
   let errorMsg = "";
 
@@ -19,47 +22,6 @@
       localStorage.removeItem("awadhi_user_cache");
     } catch (e) {
       // ignore
-    }
-  }
-
-  async function loadUser(): Promise<void> {
-    loading = true;
-    errorMsg = "";
-    try {
-      // prefer cached user
-      const cached = localStorage.getItem("awadhi_user_cache");
-      if (cached) {
-        user = JSON.parse(cached);
-        loading = false;
-        return;
-      }
-
-      const token = localStorage.getItem("awadhi_access_token");
-      if (!token) {
-        user = null;
-        loading = false;
-        return;
-      }
-
-      const resp = await fetch(`${API_BASE}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!resp.ok) {
-        // unauthorized or other: clear tokens
-        clearAuthCache();
-        user = null;
-        loading = false;
-        return;
-      }
-
-      user = await resp.json();
-      localStorage.setItem("awadhi_user_cache", JSON.stringify(user));
-    } catch (err) {
-      console.warn("[AuthStatus] loadUser error", err);
-      user = null;
-    } finally {
-      loading = false;
     }
   }
 
@@ -77,11 +39,19 @@
       console.warn("[AuthStatus] logout network error", e);
     } finally {
       clearAuthCache();
+      clearAuthSession();
       // make sure other parts of the app re-check
       user = null;
       // redirect to home
       window.location.href = "/";
     }
+  }
+
+  function syncFromStore() {
+    const state = get(authSession);
+    loading = state.loading;
+    user = state.user;
+    errorMsg = state.error;
   }
 
   function displayName(u: any) {
@@ -105,9 +75,21 @@
   onMount(() => {
     // always run client-only
     if (typeof window === "undefined") return;
-    loadUser();
+
+    const unsubscribe = authSession.subscribe((state) => {
+      loading = state.loading;
+      user = state.user;
+      errorMsg = state.error;
+    });
+
+    syncFromStore();
+    ensureAuthLoaded();
     document.addEventListener("click", onDocumentClick);
-    return () => document.removeEventListener("click", onDocumentClick);
+
+    return () => {
+      unsubscribe();
+      document.removeEventListener("click", onDocumentClick);
+    };
   });
 </script>
 
@@ -142,7 +124,6 @@
       <div class="flex items-center gap-4 auth-status-root">
         <!-- role-based quick links -->
         <nav class="hidden md:flex items-center gap-3" aria-label="role links">
-          <a href="/submit" class="hover:underline">Contribute</a>
           {#if user.role === "moderator" || user.role === "admin"}
             <a href="/moderation" class="hover:underline">Moderation</a>
           {/if}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api } from "../../lib/api";
+  import { API_BASE } from "../../lib/api";
 
   export let content_type: string;
   export let content_id: number;
@@ -10,35 +10,69 @@
   let loading = true;
   let error = "";
 
-  onMount(async () => {
-    loading = true;
-    error = "";
-    try {
-      const response = await api(`/recommendations/${content_type}/${content_id}?limit=${limit}`);
-      
-      // Normalize response (handle array or object with results)
-      let rawItems = Array.isArray(response) ? response : response?.results || response?.items || [];
-      
-      // Filter and map items
-      items = rawItems
-        .filter((item: any) => item && (item.id || item.content_id))
-        .map((item: any) => ({
-          id: item.content_id || item.id,
-          type: item.content_type || content_type,
-          title: getTitle(item),
-          snippet: getSnippet(item),
-          url: getUrl(item),
-          score: item.score || 0,
-        }))
-        .filter((item: any) => item.url); // Only items with valid URLs
-      
-    } catch (e: any) {
-      error = e?.message || "Failed to load recommendations";
-      console.error("[Recommendations] Error:", e);
-      items = [];
-    } finally {
-      loading = false;
+  function safeText(value: unknown, max = 160): string {
+    if (typeof value !== "string") return "";
+    const normalized = value.trim();
+    if (!normalized) return "";
+    return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized;
+  }
+
+  async function fetchRecommendations(signal: AbortSignal): Promise<any[]> {
+    const response = await fetch(`${API_BASE}/recommendations/${content_type}/${content_id}?limit=${limit}`, {
+      method: "GET",
+      credentials: "include",
+      signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
     }
+
+    return response.json();
+  }
+
+  onMount(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    (async () => {
+      loading = true;
+      error = "";
+      try {
+        const response: any = await fetchRecommendations(controller.signal);
+
+        // Normalize response (handle array or object with results)
+        const rawItems = Array.isArray(response) ? response : response?.results || response?.items || [];
+
+        const normalized = rawItems
+          .filter((item: any) => item && (item.id || item.content_id))
+          .map((item: any) => ({
+            id: item.content_id || item.id,
+            type: safeText(item.content_type || content_type, 50) || content_type,
+            title: getTitle(item),
+            snippet: getSnippet(item),
+            url: getUrl(item),
+            score: Number(item.score || 0),
+          }))
+          .filter((item: any) => item.url);
+
+        if (!active || controller.signal.aborted) return;
+        items = normalized;
+      } catch (e: any) {
+        if (!active || controller.signal.aborted) return;
+        error = e?.message || "Failed to load recommendations";
+        console.error("[Recommendations] Error:", e);
+        items = [];
+      } finally {
+        if (!active || controller.signal.aborted) return;
+        loading = false;
+      }
+    })();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
   });
 
   function getTitle(item: any): string {
@@ -46,15 +80,18 @@
     if (item.title_or_text) return item.title_or_text;
     if (item.title) return item.title;
     if (item.lemma_devanagari) {
-      return item.lemma_devanagari + (item.lemma_roman ? ` (${item.lemma_roman})` : "");
+      const devanagari = safeText(item.lemma_devanagari, 120);
+      const roman = safeText(item.lemma_roman, 60);
+      return devanagari + (roman ? ` (${roman})` : "");
     }
-    if (item.text_devanagari) return item.text_devanagari;
+    if (item.text_devanagari) return safeText(item.text_devanagari, 120);
     if (item.main_text) {
       // For doha, show first line only
-      const firstLine = item.main_text.split(/\r?\n/)[0]?.trim();
-      return firstLine || item.main_text.slice(0, 80);
+      const mainText = safeText(item.main_text, 220);
+      const firstLine = mainText.split(/\r?\n/)[0]?.trim();
+      return firstLine || safeText(mainText, 80);
     }
-    if (item.text) return item.text.slice(0, 80);
+    if (item.text) return safeText(item.text, 80);
     
     const type = item.content_type || content_type;
     const id = item.content_id || item.id;
@@ -63,15 +100,16 @@
 
   function getSnippet(item: any): string {
     // Extract meaningful snippet
-    if (item.meaning) return item.meaning.slice(0, 160);
-    if (item.excerpt) return item.excerpt.slice(0, 160);
-    if (item.body) return item.body.slice(0, 160);
-    if (item.snippet) return item.snippet.slice(0, 160);
+    if (item.meaning) return safeText(item.meaning, 160);
+    if (item.excerpt) return safeText(item.excerpt, 160);
+    if (item.body) return safeText(item.body, 160);
+    if (item.snippet) return safeText(item.snippet, 160);
     
     // For doha, show second line if available
     if (item.main_text) {
-      const lines = item.main_text.split(/\r?\n/).filter((l: string) => l.trim());
-      if (lines.length > 1) return lines.slice(1).join(" ").slice(0, 160);
+      const normalized = safeText(item.main_text, 500);
+      const lines = normalized.split(/\r?\n/).filter((l: string) => l.trim());
+      if (lines.length > 1) return safeText(lines.slice(1).join(" "), 160);
     }
     
     return "";

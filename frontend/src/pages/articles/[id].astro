@@ -151,7 +151,7 @@ const articleUrl = `${baseUrl}/articles/${id}`;
         />
       </div>
 
-    <Recommendations content_type="article" content_id={article.id} client:load />
+    <Recommendations content_type="article" content_id={article.id} client:visible />
 
     <div class="text-center pt-4">
       <a href="/articles" class="text-cyan-400 hover:text-cyan-300 underline">← Back to Articles</a>

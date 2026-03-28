@@ -1,7 +1,7 @@
 # app/api/v1/search.py
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -12,21 +12,19 @@ router = APIRouter(prefix="", tags=["search"])
 
 
 class SearchItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     hierarchy_path: Optional[str]
     main_text: str
     meaning: Optional[str]
     relevance_score: Optional[float] = 0.0
 
-    class Config:
-        orm_mode = True
-
-
 class SearchOut(BaseModel):
     total: int
     results: List[SearchItem]
 
-search_rate_limit = rate_limit_dependency(action_key="search", limit=120, window_seconds=60, granularity=60)
+search_rate_limit = rate_limit_dependency(action_key="search", limit=10, window_seconds=60, granularity=60)
 
 @router.get("/search", dependencies=[Depends(search_rate_limit)])
 def search_endpoint(

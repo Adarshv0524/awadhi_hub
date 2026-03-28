@@ -2,20 +2,21 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, urlencode
 import secrets
+from starlette.status import HTTP_429_TOO_MANY_REQUESTS
 
 from fastapi.responses import RedirectResponse
 
 from app.db.session import get_db
-from app.db.models import User, RefreshToken, OAuthAccount
+from app.db.models import User, RefreshToken, OAuthAccount, SystemSetting
 from app.auth.hash import hash_password, verify_password
 from app.auth.jwt import create_access_token, create_refresh_token, create_password_reset_token, decode_token
 from app.auth.google import exchange_code_for_tokens, fetch_google_profile
 from app.core.settings import settings
 from app.core.security import get_current_user
-from app.services.rate_limit import rate_limit_dependency
+from app.services.rate_limit import check_and_increment
 from app.services.email_service import send_password_reset_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -92,21 +93,47 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
         
     return {"id": user.id, "email": user.email, "username": user.username}
 
-# apply per-IP and per-user limit for login
-login_rate_limit = rate_limit_dependency(action_key="login", limit=100, window_seconds=3600, granularity=60)
-
-
-@router.post("/login", dependencies=[Depends(login_rate_limit)])
-def login(data: LoginIn, db: Session = Depends(get_db)):
+@router.post("/login")
+def login(data: LoginIn, request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == data.email).first()
+
+    # Admin login bypasses rate limiting by requirement.
+    # Non-admin/unknown-user attempts remain rate-limited to protect auth endpoints.
+    is_admin_login = bool(user and user.role == "admin")
+    if not is_admin_login:
+        rate_limits_row = db.query(SystemSetting).filter(SystemSetting.setting_key == "rate_limits").first()
+        rate_limits = rate_limits_row.value if rate_limits_row and isinstance(rate_limits_row.value, dict) else {}
+        login_limits = rate_limits.get("login", {}) if isinstance(rate_limits, dict) else {}
+        login_limit = int(login_limits.get("limit", 100))
+        login_window_seconds = int(login_limits.get("window_seconds", 3600))
+
+        ip = request.client.host if request.client else None
+        allowed, retry_after = check_and_increment(
+            db=db,
+            user_id=user.id if user else None,
+            ip_address=ip,
+            action_key="login",
+            window_seconds=login_window_seconds,
+            limit=login_limit,
+            granularity=60,
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many requests",
+                headers={"Retry-After": str(retry_after)},
+            )
+
     if not user or not user.password_hash or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not user.is_active or user.is_banned:
+        raise HTTPException(status_code=403, detail="User not allowed")
     access = create_access_token(user.id)
     refresh = create_refresh_token(user.id)
-    expires_at = datetime.utcnow() + timedelta(seconds=int(settings.JWT_REFRESH_TOKEN_EXPIRES_SECONDS))
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(settings.JWT_REFRESH_TOKEN_EXPIRES_SECONDS))
     rt = RefreshToken(token=refresh, user_id=user.id, expires_at=expires_at)
     db.add(rt)
-    user.last_login = datetime.utcnow()
+    user.last_login = datetime.now(timezone.utc)
     db.commit()
     return {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
 
@@ -290,9 +317,12 @@ async def google_callback(
         db.add(oauth)
         db.commit()
 
+    if not user or not user.is_active or user.is_banned:
+        return RedirectResponse(url=f"{_frontend_login_url()}?oauth_error=account_not_allowed", status_code=302)
+
     access = create_access_token(user.id)
     refresh = create_refresh_token(user.id)
-    expires_at = datetime.utcnow() + timedelta(seconds=int(settings.JWT_REFRESH_TOKEN_EXPIRES_SECONDS))
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(settings.JWT_REFRESH_TOKEN_EXPIRES_SECONDS))
     db.add(RefreshToken(token=refresh, user_id=user.id, expires_at=expires_at))
     db.commit()
 

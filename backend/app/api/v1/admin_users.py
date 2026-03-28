@@ -1,7 +1,7 @@
 # app/api/v1/admin_users.py
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 from typing import Optional, List, Any, Dict
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -44,6 +44,8 @@ class UserUpdateAdminIn(BaseModel):
 
 
 class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     email: str
     username: Optional[str]
@@ -53,10 +55,6 @@ class UserOut(BaseModel):
     is_active: bool
     is_banned: bool
     created_at: datetime
-
-    class Config:
-        orm_mode = True
-
 
 @router.get(
     "",

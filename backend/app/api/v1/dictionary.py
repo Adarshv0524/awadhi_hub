@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import List, Optional, Literal
 from fastapi import APIRouter, Depends, Query, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, asc, desc
 
@@ -24,6 +24,8 @@ router = APIRouter(prefix="/dictionary", tags=["dictionary"])
 # ----------------------------
 
 class DictionaryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     lemma_devanagari: str
     lemma_roman: Optional[str]
@@ -44,10 +46,6 @@ class DictionaryOut(BaseModel):
     bookmarks_count: int = 0
     search_hits_count: int = 0
     weight_score: float = 0.0
-
-    class Config:
-        orm_mode = True
-
 
 class DictionaryDetailOut(DictionaryOut):
     senses: list

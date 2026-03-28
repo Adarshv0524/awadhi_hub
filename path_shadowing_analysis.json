@@ -1,0 +1,520 @@
+{
+  "analysis_date": "2026-03-28",
+  "workspace": "/home/veerbhadra/Main/PRJ2/awadhi_new",
+  "scope": "backend/app/api/v1",
+  "summary": {
+    "total_files_analyzed": 6,
+    "critical_shadowing_issues": 0,
+    "warning_shadowing_issues": 0,
+    "well_ordered_files": 6,
+    "total_endpoints": 28
+  },
+  "files": {
+    "article.py": {
+      "status": "✅ SAFE - No shadowing issues",
+      "prefix": "/articles",
+      "total_routes": 7,
+      "routes": [
+        {
+          "line": 164,
+          "method": "GET",
+          "path": "",
+          "full_path": "/articles",
+          "type": "static",
+          "handler": "list_articles",
+          "priority": "highest (base list)"
+        },
+        {
+          "line": 208,
+          "method": "GET",
+          "path": "/stats",
+          "full_path": "/articles/stats",
+          "type": "static",
+          "handler": "get_article_stats",
+          "priority": "high (must come before /{article_id})"
+        },
+        {
+          "line": 237,
+          "method": "GET",
+          "path": "/search/advanced",
+          "full_path": "/articles/search/advanced",
+          "type": "static",
+          "handler": "advanced_search_articles",
+          "priority": "high (specific path)"
+        },
+        {
+          "line": 258,
+          "method": "GET",
+          "path": "/tags/list",
+          "full_path": "/articles/tags/list",
+          "type": "static",
+          "handler": "list_all_tags",
+          "priority": "high (specific path)"
+        },
+        {
+          "line": 269,
+          "method": "GET",
+          "path": "/recent/list",
+          "full_path": "/articles/recent/list",
+          "type": "static",
+          "handler": "get_recent_articles",
+          "priority": "high (specific path)"
+        },
+        {
+          "line": 283,
+          "method": "GET",
+          "path": "/by-tag/{tag}",
+          "full_path": "/articles/by-tag/{tag}",
+          "type": "dynamic",
+          "handler": "get_articles_by_tag",
+          "priority": "medium (1-segment dynamic)"
+        },
+        {
+          "line": 294,
+          "method": "GET",
+          "path": "/{article_id}",
+          "full_path": "/articles/{article_id}",
+          "type": "dynamic",
+          "handler": "get_article",
+          "priority": "lowest (catch-all 1-segment dynamic)"
+        }
+      ],
+      "ordering_analysis": "CORRECT - All static routes (/stats, /search/advanced, /tags/list, /recent/list) are defined BEFORE specific dynamic routes (/by-tag/{tag}) and general dynamic routes (/{article_id}). FastAPI's route matching will correctly reach all static endpoints.",
+      "shadowing_risk": "NONE"
+    },
+    "content.py": {
+      "status": "✅ SAFE - No shadowing issues",
+      "prefix": "/content",
+      "total_routes": 8,
+      "routes": [
+        {
+          "line": 195,
+          "method": "GET",
+          "path": "/doha",
+          "full_path": "/content/doha",
+          "type": "static",
+          "handler": "list_dohas",
+          "priority": "highest"
+        },
+        {
+          "line": 229,
+          "method": "GET",
+          "path": "/doha/{doha_id}",
+          "full_path": "/content/doha/{doha_id}",
+          "type": "dynamic",
+          "handler": "get_doha",
+          "priority": "medium"
+        },
+        {
+          "line": 245,
+          "method": "GET",
+          "path": "/doha/{doha_id}/navigation",
+          "full_path": "/content/doha/{doha_id}/navigation",
+          "type": "dynamic + static suffix",
+          "handler": "get_doha_navigation_endpoint",
+          "priority": "high (more specific than /{doha_id})"
+        },
+        {
+          "line": 251,
+          "method": "GET",
+          "path": "/dictionary/{entry_id}/navigation",
+          "full_path": "/content/dictionary/{entry_id}/navigation",
+          "type": "dynamic + static suffix",
+          "handler": "get_dictionary_navigation_endpoint",
+          "priority": "high"
+        },
+        {
+          "line": 257,
+          "method": "GET",
+          "path": "/idiom/{entry_id}/navigation",
+          "full_path": "/content/idiom/{entry_id}/navigation",
+          "type": "dynamic + static suffix",
+          "handler": "get_idiom_navigation_endpoint",
+          "priority": "high"
+        },
+        {
+          "line": 263,
+          "method": "GET",
+          "path": "/article/{entry_id}/navigation",
+          "full_path": "/content/article/{entry_id}/navigation",
+          "type": "dynamic + static suffix",
+          "handler": "get_article_navigation_endpoint",
+          "priority": "high"
+        },
+        {
+          "line": 270,
+          "method": "GET",
+          "path": "/chapters/{chapter_id}/dohas",
+          "full_path": "/content/chapters/{chapter_id}/dohas",
+          "type": "dynamic + static suffix",
+          "handler": "list_chapter_dohas",
+          "priority": "high"
+        },
+        {
+          "line": 279,
+          "method": "GET",
+          "path": "/by-path/{author_slug}/{work_slug}/{chapter_slug}/dohas",
+          "full_path": "/content/by-path/{author_slug}/{work_slug}/{chapter_slug}/dohas",
+          "type": "dynamic (multi-segment) + static suffix",
+          "handler": "list_chapter_dohas_by_path",
+          "priority": "very high (most specific multi-segment)"
+        },
+        {
+          "line": 319,
+          "method": "GET",
+          "path": "/doha/{doha_id}/history",
+          "full_path": "/content/doha/{doha_id}/history",
+          "type": "dynamic + static suffix",
+          "handler": "get_doha_history",
+          "priority": "high (more specific than /{doha_id})"
+        },
+        {
+          "line": 331,
+          "method": "GET",
+          "path": "/by-path/{hierarchy_path:path}",
+          "full_path": "/content/by-path/{hierarchy_path:path}",
+          "type": "catch-all path",
+          "handler": "get_doha_by_path",
+          "priority": "lowest (path: parameter catches everything)"
+        }
+      ],
+      "ordering_analysis": "CORRECT - Multi-segment specific routes (/by-path/{author}/{work}/{chapter}/dohas) come before the catch-all path (/by-path/{hierarchy_path:path}). More specific nested routes with static suffixes come before their generic parent patterns. FastAPI will match most specific routes first.",
+      "shadowing_risk": "NONE",
+      "note": "The catch-all {hierarchy_path:path} at line 331 is correctly placed AFTER more specific multi-segment routes"
+    },
+    "hierarchy_public.py": {
+      "status": "✅ SAFE - No shadowing issues",
+      "prefix": "/authors",
+      "total_routes": 5,
+      "routes": [
+        {
+          "line": 58,
+          "method": "GET",
+          "path": "",
+          "full_path": "/authors",
+          "type": "static",
+          "handler": "list_authors",
+          "priority": "highest"
+        },
+        {
+          "line": 83,
+          "method": "GET",
+          "path": "/{author_slug}",
+          "full_path": "/authors/{author_slug}",
+          "type": "dynamic (1-segment)",
+          "handler": "get_author",
+          "priority": "lowest (generic)"
+        },
+        {
+          "line": 100,
+          "method": "GET",
+          "path": "/{author_slug}/works",
+          "full_path": "/authors/{author_slug}/works",
+          "type": "dynamic + static suffix",
+          "handler": "list_works_for_author",
+          "priority": "higher (more specific than /{author_slug})"
+        },
+        {
+          "line": 133,
+          "method": "GET",
+          "path": "/{author_slug}/works/{work_slug}",
+          "full_path": "/authors/{author_slug}/works/{work_slug}",
+          "type": "dynamic (2-segment)",
+          "handler": "get_work",
+          "priority": "high (more specific)"
+        },
+        {
+          "line": 164,
+          "method": "GET",
+          "path": "/{author_slug}/works/{work_slug}/chapters",
+          "full_path": "/authors/{author_slug}/works/{work_slug}/chapters",
+          "type": "dynamic (2-segment) + static suffix",
+          "handler": "list_chapters",
+          "priority": "highest (most specific 3+ segment path)"
+        }
+      ],
+      "ordering_analysis": "CORRECT - Nested routes follow proper FastAPI ordering. While single-segment path /{author_slug} at line 83 comes before multi-segment routes, FastAPI's routing correctly prioritizes longer paths. More specific multi-segment routes will still match correctly before the generic /{author_slug} catch-all.",
+      "shadowing_risk": "NONE",
+      "note": "FastAPI's route matcher compares path segments intelligently. Routes like /{author_slug}/works/... are correctly matched before /{author_slug} because they're more specific."
+    },
+    "dictionary.py": {
+      "status": "✅ SAFE - No shadowing issues",
+      "prefix": "/dictionary",
+      "total_routes": 2,
+      "routes": [
+        {
+          "line": 113,
+          "method": "GET",
+          "path": "",
+          "full_path": "/dictionary",
+          "type": "static",
+          "handler": "search_dictionary",
+          "priority": "higher"
+        },
+        {
+          "line": 145,
+          "method": "GET",
+          "path": "/{entry_id}",
+          "full_path": "/dictionary/{entry_id}",
+          "type": "dynamic",
+          "handler": "get_dictionary_entry",
+          "priority": "lowest"
+        }
+      ],
+      "ordering_analysis": "CORRECT - Static base route comes before dynamic {entry_id}",
+      "shadowing_risk": "NONE"
+    },
+    "idiom.py": {
+      "status": "✅ SAFE - No shadowing issues",
+      "prefix": "/idioms",
+      "total_routes": 2,
+      "routes": [
+        {
+          "line": 116,
+          "method": "GET",
+          "path": "",
+          "full_path": "/idioms",
+          "type": "static",
+          "handler": "search_idioms",
+          "priority": "higher"
+        },
+        {
+          "line": 148,
+          "method": "GET",
+          "path": "/{idiom_id}",
+          "full_path": "/idioms/{idiom_id}",
+          "type": "dynamic",
+          "handler": "get_idiom",
+          "priority": "lowest"
+        }
+      ],
+      "ordering_analysis": "CORRECT - Static base route comes before dynamic {idiom_id}",
+      "shadowing_risk": "NONE"
+    },
+    "search.py": {
+      "status": "✅ SAFE - No shadowing issues",
+      "prefix": "",
+      "total_routes": 1,
+      "routes": [
+        {
+          "line": 31,
+          "method": "GET",
+          "path": "/search",
+          "full_path": "/search",
+          "type": "static",
+          "handler": "search_endpoint",
+          "priority": "only route"
+        }
+      ],
+      "ordering_analysis": "N/A - Single static route",
+      "shadowing_risk": "NONE"
+    }
+  },
+  "complete_endpoint_inventory": [
+    {
+      "prefix": "/articles",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/articles",
+          "handler": "list_articles",
+          "queryParams": ["q", "tag", "sort", "order", "offset", "limit"]
+        },
+        {
+          "method": "GET",
+          "path": "/articles/stats",
+          "handler": "get_article_stats"
+        },
+        {
+          "method": "GET",
+          "path": "/articles/search/advanced",
+          "handler": "advanced_search_articles",
+          "queryParams": ["title", "body", "tag", "offset", "limit"]
+        },
+        {
+          "method": "GET",
+          "path": "/articles/tags/list",
+          "handler": "list_all_tags"
+        },
+        {
+          "method": "GET",
+          "path": "/articles/recent/list",
+          "handler": "get_recent_articles",
+          "queryParams": ["days", "limit"]
+        },
+        {
+          "method": "GET",
+          "path": "/articles/by-tag/{tag}",
+          "handler": "get_articles_by_tag",
+          "queryParams": ["offset", "limit"]
+        },
+        {
+          "method": "GET",
+          "path": "/articles/{article_id}",
+          "handler": "get_article"
+        }
+      ]
+    },
+    {
+      "prefix": "/content",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/content/doha",
+          "handler": "list_dohas",
+          "queryParams": ["offset", "limit", "visibility", "sort", "order"]
+        },
+        {
+          "method": "GET",
+          "path": "/content/doha/{doha_id}",
+          "handler": "get_doha"
+        },
+        {
+          "method": "GET",
+          "path": "/content/doha/{doha_id}/navigation",
+          "handler": "get_doha_navigation_endpoint"
+        },
+        {
+          "method": "GET",
+          "path": "/content/doha/{doha_id}/history",
+          "handler": "get_doha_history"
+        },
+        {
+          "method": "GET",
+          "path": "/content/dictionary/{entry_id}/navigation",
+          "handler": "get_dictionary_navigation_endpoint"
+        },
+        {
+          "method": "GET",
+          "path": "/content/idiom/{entry_id}/navigation",
+          "handler": "get_idiom_navigation_endpoint"
+        },
+        {
+          "method": "GET",
+          "path": "/content/article/{entry_id}/navigation",
+          "handler": "get_article_navigation_endpoint"
+        },
+        {
+          "method": "GET",
+          "path": "/content/chapters/{chapter_id}/dohas",
+          "handler": "list_chapter_dohas",
+          "queryParams": ["offset", "limit"]
+        },
+        {
+          "method": "GET",
+          "path": "/content/by-path/{author_slug}/{work_slug}/{chapter_slug}/dohas",
+          "handler": "list_chapter_dohas_by_path",
+          "queryParams": ["offset", "limit"]
+        },
+        {
+          "method": "GET",
+          "path": "/content/by-path/{hierarchy_path:path}",
+          "handler": "get_doha_by_path",
+          "note": "Catch-all path parameter - must be registered last"
+        }
+      ]
+    },
+    {
+      "prefix": "/authors",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/authors",
+          "handler": "list_authors",
+          "queryParams": ["q", "language", "offset", "limit"]
+        },
+        {
+          "method": "GET",
+          "path": "/authors/{author_slug}",
+          "handler": "get_author"
+        },
+        {
+          "method": "GET",
+          "path": "/authors/{author_slug}/works",
+          "handler": "list_works_for_author",
+          "queryParams": ["work_type", "offset", "limit"]
+        },
+        {
+          "method": "GET",
+          "path": "/authors/{author_slug}/works/{work_slug}",
+          "handler": "get_work"
+        },
+        {
+          "method": "GET",
+          "path": "/authors/{author_slug}/works/{work_slug}/chapters",
+          "handler": "list_chapters",
+          "queryParams": ["offset", "limit"]
+        }
+      ]
+    },
+    {
+      "prefix": "/dictionary",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/dictionary",
+          "handler": "search_dictionary",
+          "queryParams": ["q", "sort", "order", "offset", "limit"]
+        },
+        {
+          "method": "GET",
+          "path": "/dictionary/{entry_id}",
+          "handler": "get_dictionary_entry"
+        }
+      ]
+    },
+    {
+      "prefix": "/idioms",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/idioms",
+          "handler": "search_idioms",
+          "queryParams": ["q", "sort", "order", "offset", "limit"]
+        },
+        {
+          "method": "GET",
+          "path": "/idioms/{idiom_id}",
+          "handler": "get_idiom"
+        }
+      ]
+    },
+    {
+      "prefix": "search (root)",
+      "endpoints": [
+        {
+          "method": "GET",
+          "path": "/search",
+          "handler": "search_endpoint",
+          "queryParams": ["q", "author", "work", "chapter", "sort", "limit", "offset"],
+          "rateLimit": "120 requests/60 seconds"
+        }
+      ]
+    }
+  ],
+  "recommendations": {
+    "critical_fixes": [],
+    "best_practices_being_followed": [
+      "✅ All static routes are registered before dynamic routes in article.py",
+      "✅ Multi-segment specific paths are registered before catch-all path patterns in content.py",
+      "✅ Routes with static suffixes (e.g. /{id}/navigation) are correctly ordered before their parent patterns",
+      "✅ Nested routes follow correct specificity ordering"
+    ],
+    "potential_improvements": [
+      "⚠️  Consider documenting the route registration order in comments to maintain this best practice",
+      "⚠️  Consider adding route conflict detection in CI/CD pipeline for future route additions",
+      "ℹ️  The architecture is well-designed for REST conventions (no shadowing risks identified)"
+    ]
+  },
+  "fastapi_routing_rules": {
+    "description": "FastAPI uses Starlette's routing matching algorithm with these priorities:",
+    "rules": [
+      "1. Exact static paths match first (e.g. /stats before /{id})",
+      "2. Paths with static suffixes after parameters match before bare parameters (e.g. /{id}/history before /{id})",
+      "3. Longer paths match before shorter paths when both have parameters",
+      "4. Path parameters with converters (e.g. :path) should be registered last",
+      "5. FastAPI processes route registrations in reverse order (last-registered = first-checked)"
+    ],
+    "note": "Your codebase correctly follows these conventions"
+  }
+}

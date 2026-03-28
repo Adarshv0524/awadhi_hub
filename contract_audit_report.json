@@ -1,0 +1,832 @@
+{
+  "audit_metadata": {
+    "timestamp": "2026-03-28",
+    "backend_schema_location": "backend/app/api/v1/submissions.py (SubmissionCreateIn)",
+    "frontend_form_location": "frontend/src/components/submission/SubmissionForm.svelte (buildPayload)",
+    "total_content_types": 4,
+    "critical_mismatches": 2,
+    "medium_mismatches": 1
+  },
+  "content_types": {
+    "doha": {
+      "backend_schema": {
+        "required_fields": [
+          "content_type",
+          "main_text"
+        ],
+        "optional_fields": [
+          "meaning",
+          "is_classical",
+          "author_slug",
+          "work_slug",
+          "chapter_slug",
+          "number_in_chapter",
+          "external_references",
+          "visibility",
+          "submit_for_review"
+        ],
+        "field_types": {
+          "content_type": "str (max_length=50)",
+          "main_text": "str (required)",
+          "meaning": "Optional[str]",
+          "is_classical": "bool (default=False)",
+          "author_slug": "Optional[str]",
+          "work_slug": "Optional[str]",
+          "chapter_slug": "Optional[str]",
+          "number_in_chapter": "Optional[int]",
+          "external_references": "Optional[Dict[str, Any]]",
+          "visibility": "Optional[str] (max_length=20, default='private')",
+          "submit_for_review": "bool (default=False)"
+        }
+      },
+      "frontend_form": {
+        "collected_fields": [
+          "main_text",
+          "meaning",
+          "is_classical",
+          "selected_author_slug",
+          "free_author_name",
+          "selected_work_slug",
+          "selected_chapter_slug",
+          "number_in_chapter",
+          "external_refs",
+          "visibility",
+          "time_spent_seconds"
+        ],
+        "required_fields": [
+          "main_text"
+        ],
+        "field_mapping": {
+          "main_text": "main_text (required, textarea)",
+          "meaning": "meaning (optional, textarea)",
+          "is_classical": "is_classical (checkbox)",
+          "selected_author_slug": "author_slug (select dropdown)",
+          "free_author_name": "author_slug (text input fallback)",
+          "selected_work_slug": "work_slug (select dropdown)",
+          "selected_chapter_slug": "chapter_slug (select dropdown)",
+          "number_in_chapter": "number_in_chapter (number input)",
+          "external_refs": "external_references (JSON textarea)",
+          "visibility": "visibility (select dropdown)",
+          "time_spent_seconds": "NOT IN SCHEMA (added dynamically)"
+        }
+      },
+      "canonical_content_model": {
+        "model": "DohaEntry",
+        "key_fields": [
+          "main_text",
+          "meaning",
+          "text_devanagari",
+          "text_romanized"
+        ]
+      },
+      "comparison": [
+        {
+          "field_name": "content_type",
+          "backend": {
+            "required": true,
+            "type": "str",
+            "max_length": 50,
+            "value": "must be 'doha'"
+          },
+          "frontend": {
+            "required": true,
+            "type": "calculated from selector",
+            "value": "'doha'"
+          },
+          "status": "match"
+        },
+        {
+          "field_name": "main_text",
+          "backend": {
+            "required": true,
+            "type": "str",
+            "validation": "no length restriction in schema"
+          },
+          "frontend": {
+            "required": true,
+            "type": "textarea",
+            "validation": "required HTML5 attribute"
+          },
+          "status": "match"
+        },
+        {
+          "field_name": "meaning",
+          "backend": {
+            "required": false,
+            "type": "Optional[str]"
+          },
+          "frontend": {
+            "required": false,
+            "type": "textarea"
+          },
+          "status": "match"
+        },
+        {
+          "field_name": "author_slug",
+          "backend": {
+            "required": false,
+            "type": "Optional[str]",
+            "validation": "ignored if is_classical=False"
+          },
+          "frontend": {
+            "required": false,
+            "sources": ["selected_author_slug from dropdown", "free_author_name as fallback"],
+            "current_mapping": "author_slug = selected_author_slug || free_author_name"
+          },
+          "status": "match",
+          "note": "Frontend allows both dropdown selection and free text entry. Backend handles this correctly."
+        },
+        {
+          "field_name": "is_classical",
+          "backend": {
+            "required": false,
+            "type": "bool",
+            "default": false,
+            "validation": "triggers strict hierarchy validation"
+          },
+          "frontend": {
+            "required": false,
+            "type": "checkbox"
+          },
+          "status": "match"
+        },
+        {
+          "field_name": "time_spent_seconds",
+          "backend": {
+            "required": false,
+            "present": false,
+            "note": "NOT in SubmissionCreateIn schema"
+          },
+          "frontend": {
+            "required": false,
+            "calculated": "Math.floor((new Date().getTime() - formStartTime.getTime()) / 1000)",
+            "sent_in_payload": true
+          },
+          "status": "mismatch",
+          "severity": "LOW",
+          "impact": "Frontend sends extra field that backend silently ignores (Pydantic extra='ignore'). No data loss, but time tracking capability is lost."
+        },
+        {
+          "field_name": "external_references",
+          "backend": {
+            "required": false,
+            "type": "Optional[Dict[str, Any]]"
+          },
+          "frontend": {
+            "required": false,
+            "type": "JSON textarea (manual entry)",
+            "current_usage": "Advanced users can add custom metadata"
+          },
+          "status": "match"
+        }
+      ],
+      "overall_status": "PASS",
+      "issues": [],
+      "notes": "Doha submission contract is well-aligned. Minor issue with time_spent_seconds field being ignored."
+    },
+    "dictionary": {
+      "backend_schema": {
+        "required_fields": [
+          "content_type",
+          "main_text"
+        ],
+        "optional_fields": [
+          "meaning",
+          "is_classical",
+          "author_slug",
+          "work_slug",
+          "chapter_slug",
+          "number_in_chapter",
+          "external_references",
+          "visibility",
+          "submit_for_review"
+        ],
+        "field_types": {
+          "content_type": "str (max_length=50)",
+          "main_text": "str (required)",
+          "meaning": "Optional[str]",
+          "other": "same as doha"
+        },
+        "note": "NO lemma_devanagari or lemma_roman fields in SubmissionCreateIn"
+      },
+      "frontend_form": {
+        "collected_fields": [
+          "lemma_devanagari",
+          "lemma_roman",
+          "meaning",
+          "is_classical",
+          "selected_author_slug",
+          "free_author_name",
+          "selected_work_slug",
+          "selected_chapter_slug",
+          "number_in_chapter",
+          "external_refs",
+          "visibility"
+        ],
+        "required_fields": [
+          "lemma_devanagari"
+        ],
+        "payload_construction": {
+          "main_text": "lemma_devanagari || lemma_roman || null (fallback logic)",
+          "lemma_devanagari": "sent directly as top-level field",
+          "lemma_roman": "sent directly as top-level field",
+          "meaning": "sent directly"
+        }
+      },
+      "moderation_service_expectation": {
+        "location": "app/services/content_service.py (create_canonical_dictionary_from_submission)",
+        "payload_validator": "DictionaryPayload",
+        "required_fields": [
+          "lemma_devanagari"
+        ],
+        "optional_fields": [
+          "lemma_roman",
+          "language",
+          "senses",
+          "pronunciation",
+          "examples"
+        ],
+        "extraction_logic": {
+          "lemma_devanagari": "refs.get('lemma_devanagari') or submission.main_text",
+          "lemma_roman": "refs.get('lemma_roman') or refs.get('lemmaRoman')",
+          "senses": "refs.get('senses') or refs.get('definitions') or []"
+        },
+        "note": "Service EXPECTS these fields in external_references dict, not as top-level submission fields"
+      },
+      "comparison": [
+        {
+          "field_name": "content_type",
+          "backend": {
+            "required": true,
+            "expected_value": "'dictionary'"
+          },
+          "frontend": {
+            "sent_value": "'dictionary'"
+          },
+          "status": "match"
+        },
+        {
+          "field_name": "lemma_devanagari",
+          "backend": {
+            "present_in_schema": false,
+            "required": false,
+            "note": "NOT in SubmissionCreateIn"
+          },
+          "frontend": {
+            "sent": true,
+            "required": true,
+            "sent_as": "top-level payload field"
+          },
+          "status": "mismatch",
+          "severity": "CRITICAL",
+          "impact": "Frontend sends lemma_devanagari as top-level field, but backend Pydantic schema doesn't define it. Field will be rejected by Pydantic validation (extra fields handling). Moderation service needs it in external_references.",
+          "error_mode": "Pydantic ValidationError or silently ignored depending on config_extra setting"
+        },
+        {
+          "field_name": "lemma_roman",
+          "backend": {
+            "present_in_schema": false,
+            "required": false,
+            "note": "NOT in SubmissionCreateIn"
+          },
+          "frontend": {
+            "sent": true,
+            "required": false,
+            "sent_as": "top-level payload field"
+          },
+          "status": "mismatch",
+          "severity": "CRITICAL",
+          "impact": "Same as lemma_devanagari - field will be rejected or ignored"
+        },
+        {
+          "field_name": "main_text",
+          "backend": {
+            "required": true,
+            "type": "str"
+          },
+          "frontend": {
+            "calculated": "lemma_devanagari || lemma_roman || null",
+            "intent": "Use lemma as main_text"
+          },
+          "status": "mismatch",
+          "severity": "HIGH",
+          "impact": "Fallback logic tries to use lemma_devanagari as main_text, but since lemma_devanagari is rejected before reaching backend validation, main_text becomes null if both lemma fields rejected. Frontend assumes lemma_devanagari will be carried through."
+        },
+        {
+          "field_name": "meaning",
+          "backend": {
+            "required": false,
+            "type": "Optional[str]"
+          },
+          "frontend": {
+            "sent": true,
+            "label": "Meaning / Definition"
+          },
+          "status": "match"
+        },
+        {
+          "field_name": "senses",
+          "backend": {
+            "required": false,
+            "location": "DictionaryPayload in external_references",
+            "type": "list[DictionarySense]",
+            "validation": "max 10 senses"
+          },
+          "frontend": {
+            "present": false,
+            "note": "Frontend doesn't collect senses/definitions. No input form for structured definitions."
+          },
+          "status": "mismatch",
+          "severity": "MEDIUM",
+          "impact": "Dictionary entries require senses (definitions) per DictionaryPayload, but frontend has no form to collect them. Default empty list [] is used, creating incomplete canonical entries."
+        }
+      ],
+      "overall_status": "FAIL",
+      "critical_issues": [
+        {
+          "issue": "lemma_devanagari sent as top-level field instead of external_references",
+          "why": "Frontend buildPayload sends lemma_devanagari directly; backend SubmissionCreateIn doesn't accept it",
+          "consequence": "ValidationError: extra fields not permitted OR silent rejection depending on Pydantic config",
+          "submission_outcome": "400 Bad Request or data loss"
+        },
+        {
+          "issue": "lemma_roman sent as top-level field instead of external_references",
+          "why": "Same as lemma_devanagari",
+          "consequence": "ValidationError or silent rejection",
+          "submission_outcome": "400 Bad Request or data loss"
+        },
+        {
+          "issue": "Moderation service expects fields in external_references but they are top-level",
+          "why": "Contract mismatch between form and schema vs. moderation service expectations",
+          "consequence": "If somehow fields bypass validation, moderation approval will fail when trying to extract from external_references",
+          "submission_outcome": "500 Internal Server Error on approval"
+        }
+      ],
+      "medium_issues": [
+        {
+          "issue": "No form input for 'senses' (definitions)",
+          "why": "Frontend form only collects meaning, not structured senses array",
+          "consequence": "DictionaryPayload validation expects non-empty senses list, but defaults to empty []",
+          "submission_outcome": "Canonical dictionary entry created with no definitions"
+        }
+      ],
+      "recommendations": [
+        "CRITICAL: Update frontend buildPayload for dictionary to put lemma_devanagari and lemma_roman in external_references",
+        "CRITICAL: Update backend SubmissionCreateIn to define lemma_devanagari and lemma_roman as optional top-level fields if frontend is designed to send them that way (OR)",
+        "Update frontend form to include structured sense/definition input with dict key-value pairs",
+        "Add validation in backend schema to ensure senses is non-empty for dictionary submissions"
+      ]
+    },
+    "idiom": {
+      "backend_schema": {
+        "required_fields": [
+          "content_type",
+          "main_text"
+        ],
+        "optional_fields": [
+          "meaning",
+          "usage_example",
+          "external_references",
+          "others..."
+        ],
+        "note": "usage_example is NOT in SubmissionCreateIn schema"
+      },
+      "frontend_form": {
+        "collected_fields": [
+          "main_text",
+          "idiom_text_roman",
+          "meaning",
+          "usage_example",
+          "external_references (constructed)"
+        ],
+        "required_fields": [
+          "main_text",
+          "idiom_text_roman",
+          "meaning"
+        ],
+        "payload_construction": {
+          "main_text": "main_text (idiom text in devanagari)",
+          "meaning": "meaning (required)",
+          "usage_example": "usage_example (optional)",
+          "external_references": {
+            "text_devanagari": "main_text",
+            "text_roman": "idiom_text_roman",
+            "meaning": "meaning",
+            "examples": "usage_example ? [usage_example] : null"
+          }
+        }
+      },
+      "moderation_service_expectation": {
+        "location": "app/services/content_service.py (create_canonical_idiom_from_submission)",
+        "payload_validator": "IdiomPayload",
+        "required_fields": [
+          "text_devanagari",
+          "text_roman"
+        ],
+        "optional_fields": [
+          "meaning",
+          "examples",
+          "region"
+        ],
+        "extraction_logic": {
+          "text_roman": "refs.get('text_roman') or refs.get('textRoman') or refs.get('romanized_text')",
+          "text_devanagari": "refs.get('text_devanagari') or submission.main_text",
+          "note": "text_roman is MANDATORY per IdiomPayload definition"
+        },
+        "validation_note": "Code comment states: 'Per your instruction text_roman is MANDATORY'"
+      },
+      "comparison": [
+        {
+          "field_name": "main_text",
+          "backend": {
+            "required": true,
+            "type": "str"
+          },
+          "frontend": {
+            "required": true,
+            "sent_as": "main_text AND in external_references.text_devanagari"
+          },
+          "status": "match",
+          "note": "Sent in two places which is acceptable for robustness"
+        },
+        {
+          "field_name": "meaning",
+          "backend": {
+            "required": false,
+            "type": "Optional[str]",
+            "sent_to": "both submission.meaning and external_references.meaning"
+          },
+          "frontend": {
+            "required": true,
+            "sent_as": "meaning AND in external_references.meaning"
+          },
+          "status": "match",
+          "note": "Frontend marks as required; backend is flexible"
+        },
+        {
+          "field_name": "usage_example",
+          "backend": {
+            "in_schema": false,
+            "note": "NOT in SubmissionCreateIn"
+          },
+          "frontend": {
+            "collected": true,
+            "sent_as": "usage_example (top-level) AND external_references.examples array"
+          },
+          "status": "mismatch",
+          "severity": "LOW",
+          "impact": "usage_example sent as top-level field will be silently ignored by Pydantic. Actual usage example is captured in external_references.examples, which is correctly extracted by moderation service."
+        },
+        {
+          "field_name": "text_roman (idiom_text_roman)",
+          "backend": {
+            "required": true (per IdiomPayload)",
+            "location": "external_references.text_roman",
+            "validation": "MANDATORY"
+          },
+          "frontend": {
+            "required": true,
+            "collected_as": "idiom_text_roman",
+            "sent_to": "external_references.text_roman"
+          },
+          "status": "match",
+          "note": "Frontend correctly collects and places text_roman in external_references"
+        },
+        {
+          "field_name": "text_devanagari",
+          "backend": {
+            "required": true (per IdiomPayload)",
+            "location": "external_references.text_devanagari or submission.main_text"
+          },
+          "frontend": {
+            "required": true",
+            "collected_as": "main_text",
+            "sent_to": "main_text AND external_references.text_devanagari"
+          },
+          "status": "match",
+          "note": "Sent in redundant locations but moderation service handles both"
+        },
+        {
+          "field_name": "external_references",
+          "backend": {
+            "required": false,
+            "type": "Optional[Dict[str, Any]]"
+          },
+          "frontend": {
+            "auto_constructed": true,
+            "keys": ["text_devanagari", "text_roman", "meaning", "examples"]
+          },
+          "status": "match"
+        }
+      ],
+      "overall_status": "PASS",
+      "issues": [
+        {
+          "issue": "usage_example sent as top-level field",
+          "severity": "LOW",
+          "impact": "Field is silently ignored by Pydantic validation but data IS captured in external_references.examples, so no functional impact",
+          "recommendation": "Optional: Remove usage_example from top-level payload to reduce noise"
+        }
+      ],
+      "notes": [
+        "Idiom submission is well-designed and functionally correct",
+        "Frontend correctly places required fields (text_roman) in external_references",
+        "Moderation service successfully extracts content from external_references",
+        "Code comment confirms alignment: 'Technical note (MED-003): Idiom submission contract is now aligned end-to-end'"
+      ]
+    },
+    "article": {
+      "backend_schema": {
+        "required_fields": [
+          "content_type",
+          "main_text"
+        ],
+        "optional_fields": [
+          "meaning",
+          "is_classical",
+          "author_slug",
+          "work_slug",
+          "chapter_slug",
+          "number_in_chapter",
+          "external_references",
+          "visibility",
+          "submit_for_review"
+        ],
+        "field_types": {
+          "content_type": "str",
+          "main_text": "str (required) - used for article body",
+          "meaning": "Optional[str] - used for excerpt"
+        },
+        "note": "NO title field in SubmissionCreateIn - title must go in external_references"
+      },
+      "frontend_form": {
+        "collected_fields": [
+          "title",
+          "excerpt",
+          "content",
+          "is_classical",
+          "author_slug",
+          "work_slug",
+          "chapter_slug",
+          "number_in_chapter",
+          "external_refs",
+          "visibility"
+        ],
+        "required_fields": [
+          "title",
+          "content"
+        ],
+        "payload_construction": {
+          "title": "title (sent as top-level field)",
+          "main_text": "content (article body)",
+          "meaning": "excerpt (summary)",
+          "external_references": "null or user-provided JSON"
+        }
+      },
+      "moderation_service_expectation": {
+        "location": "app/services/content_service.py (create_canonical_article_from_submission)",
+        "payload_validator": "ArticlePayload",
+        "required_fields": [
+          "title",
+          "body"
+        ],
+        "optional_fields": [
+          "title_devanagari",
+          "title_roman",
+          "excerpt",
+          "tags"
+        ],
+        "extraction_logic": {
+          "title": "refs.get('title') or submission.main_text",
+          "body": "refs.get('body') or submission.main_text"
+        },
+        "note": "Service expects title and body in external_references, with main_text as fallback"
+      },
+      "comparison": [
+        {
+          "field_name": "title",
+          "backend": {
+            "in_schema": false,
+            "note": "NOT in SubmissionCreateIn"
+          },
+          "frontend": {
+            "required": true,
+            "sent_as": "top-level title field"
+          },
+          "status": "mismatch",
+          "severity": "CRITICAL",
+          "impact": "Frontend sends title as top-level field but backend schema doesn't accept it. Pydantic will reject extra field OR silently ignore it depending on config. Title is REQUIRED by ArticlePayload validator but will not be captured.",
+          "submission_outcome": "ValidationError OR title data lost"
+        },
+        {
+          "field_name": "main_text",
+          "backend": {
+            "required": true,
+            "usage": "article body content"
+          },
+          "frontend": {
+            "mapped_from": "content (textarea)",
+            "mapping": "payload.main_text = content"
+          },
+          "status": "match"
+        },
+        {
+          "field_name": "meaning (excerpt)",
+          "backend": {
+            "required": false,
+            "usage": "article summary/excerpt"
+          },
+          "frontend": {
+            "mapped_from": "excerpt (textarea)",
+            "mapping": "payload.meaning = excerpt"
+          },
+          "status": "match"
+        },
+        {
+          "field_name": "external_references",
+          "backend": {
+            "required": false,
+            "location": "Optional[Dict[str, Any]]",
+            "moderation_expectation": "Should contain title, body, excerpt, tags for ArticlePayload"
+          },
+          "frontend": {
+            "current_usage": "Advanced: manual JSON entry only",
+            "auto_populated": false,
+            "note": "Unlike idiom, article doesn't auto-populate external_references with required fields"
+          },
+          "status": "mismatch",
+          "severity": "HIGH",
+          "impact": "Moderation service looks for title and body in external_references, but frontend only captures them as top-level fields. Service will fail to extract from external_references and fall back to main_text (which contains body, not title)."
+        }
+      ],
+      "overall_status": "FAIL",
+      "critical_issues": [
+        {
+          "issue": "title sent as top-level field instead of external_references",
+          "why": "Backend SubmissionCreateIn doesn't define title field",
+          "consequence": "ValidationError or silent field rejection",
+          "submission_outcome": "400 Bad Request or data loss"
+        },
+        {
+          "issue": "Moderation service cannot find title in external_references",
+          "why": "Frontend doesn't populate external_references with title; service expects it there",
+          "consequence": "ArticlePayload validation fails or creates canonical article with wrong title",
+          "submission_outcome": "500 Error on approval OR canonical article with incorrect title"
+        }
+      ],
+      "high_priority_issues": [
+        {
+          "issue": "No auto-population of external_references with article metadata",
+          "why": "Unlike idiom form, article form doesn't construct external_references",
+          "consequence": "Required fields unreachable to moderation service",
+          "recommendation": "Auto-populate external_references with title, body, excerpt like idiom form does"
+        }
+      ],
+      "recommendations": [
+        "CRITICAL: Update frontend buildPayload for articles to construct external_references with {title, body, excerpt, tags}",
+        "CRITICAL: Either add title field to backend SubmissionCreateIn OR ensure frontend puts it in external_references",
+        "Add validation to ensure article submissions have title field (currently missing entirely)"
+      ]
+    }
+  },
+  "cross_cutting_issues": [
+    {
+      "issue": "time_spent_seconds field sent by all content types but not in schema",
+      "location": "frontend buildPayload, line 213",
+      "affected_types": ["doha", "dictionary", "idiom", "article"],
+      "message": "if (timeSpent !== undefined) { payload.time_spent_seconds = timeSpent; }",
+      "severity": "LOW",
+      "consequence": "Field ignored by Pydantic validation, analytics capability lost"
+    },
+    {
+      "issue": "No schema validation for submit_for_review flag",
+      "observation": "All content types sent submit_for_review but schema only checks is_classical for validation",
+      "consequence": "Submissions can be rejected or modified in moderation without changing status"
+    }
+  ],
+  "summary": {
+    "passing_content_types": ["doha", "idiom"],
+    "failing_content_types": ["dictionary", "article"],
+    "total_field_mismatches": 7,
+    "critical_mismatches": 3,
+    "high_priority_mismatches": 2,
+    "medium_priority_mismatches": 2,
+    "low_priority_mismatches": 3
+  },
+  "failure_scenarios": {
+    "scenario_1_dictionary_submission": {
+      "title": "Dictionary submission with lemma_devanagari",
+      "steps": [
+        "User fills dictionary form with lemma_devanagari='शब्द'",
+        "Frontend buildPayload creates: {content_type: 'dictionary', lemma_devanagari: 'शब्द', main_text: 'शब्द', ...}",
+        "POST /submissions with payload"
+      ],
+      "expected_backend_behavior": "Accept and store submission",
+      "actual_backend_behavior": "Pydantic ValidationError: extra fields not permitted (or silently drop lemma_devanagari if extra='ignore')",
+      "outcome": "FAIL - 400 Bad Request OR incomplete data storage"
+    },
+    "scenario_2_dictionary_moderation": {
+      "title": "Moderator approves dictionary submission",
+      "steps": [
+        "Assume submission somehow passes validation and is stored",
+        "Moderator clicks approve",
+        "Backend calls create_canonical_dictionary_from_submission()",
+        "Service tries: refs.get('lemma_devanagari') - but lemma_devanagari was never in external_references"
+      ],
+      "expected_backend_behavior": "Extract lemma_devanagari from external_references",
+      "actual_backend_behavior": "Falls back to submission.main_text which may contain wrong value",
+      "outcome": "FAIL - Canonical entry created with incorrect lemma"
+    },
+    "scenario_3_article_submission": {
+      "title": "Article submission with title",
+      "steps": [
+        "User fills article form with title='My Article'",
+        "Frontend buildPayload creates: {content_type: 'article', title: 'My Article', main_text: 'Body...', ...}",
+        "POST /submissions with payload"
+      ],
+      "expected_backend_behavior": "Accept and store title",
+      "actual_backend_behavior": "Pydantic silently ignores title field (extra fields not in schema)",
+      "outcome": "FAIL - Title data lost, submission accepted but incomplete"
+    },
+    "scenario_4_article_moderation": {
+      "title": "Moderator approves article submission",
+      "steps": [
+        "Moderator clicks approve",
+        "Backend calls create_canonical_article_from_submission()",
+        "Service tries: refs.get('title') - but title is not in external_references",
+        "Falls back to: submission.main_text"
+      ],
+      "expected_backend_behavior": "Create canonical article with title",
+      "actual_backend_behavior": "Canonical article created with title = article body (wrong!)",
+      "outcome": "FAIL - Canonical article metadata corrupted"
+    }
+  },
+  "recommendations_by_priority": {
+    "CRITICAL": [
+      {
+        "content_type": "dictionary",
+        "action": "Move lemma_devanagari and lemma_roman to external_references in frontend buildPayload",
+        "reason": "Backend schema doesn't accept them as top-level fields; moderation service expects them in external_references",
+        "files_to_update": [
+          "frontend/src/components/submission/SubmissionForm.svelte (buildPayload function)"
+        ],
+        "example": {
+          "current": "payload.lemma_devanagari = lemma_devanagari",
+          "target": "payload.external_references = { lemma_devanagari: lemma_devanagari, lemma_roman: lemma_roman, senses: [] }"
+        }
+      },
+      {
+        "content_type": "article",
+        "action": "Auto-populate external_references with title, body, excerpt in frontend buildPayload",
+        "reason": "Backend moderation service expects these fields in external_references",
+        "files_to_update": [
+          "frontend/src/components/submission/SubmissionForm.svelte (buildPayload function)"
+        ],
+        "example": {
+          "current": "payload.title = title (ignored)",
+          "target": "payload.external_references = { title: title, body: content, excerpt: excerpt, tags: [] }"
+        }
+      }
+    ],
+    "HIGH": [
+      {
+        "content_type": "dictionary",
+        "action": "Add form inputs for 'senses' (definitions) in frontend",
+        "reason": "DictionaryPayload validator requires non-empty senses list; currently defaults to []",
+        "impact": "Canonical dictionary entries created without definitions",
+        "files_to_update": [
+          "frontend/src/components/submission/SubmissionForm.svelte (dictionary section)"
+        ]
+      },
+      {
+        "content_type": "article",
+        "action": "Add backend validation to ensure title is present in submission",
+        "reason": "Title is currently completely optional but ArticlePayload requires it",
+        "files_to_update": [
+          "backend/app/api/v1/submissions.py (SubmissionCreateIn or custom validator)"
+        ]
+      }
+    ],
+    "MEDIUM": [
+      {
+        "content_type": "all",
+        "action": "Capture time_spent_seconds in backend schema for analytics",
+        "reason": "Frontend already collects this metric but it's discarded",
+        "impact": "Analytics capability unused",
+        "files_to_update": [
+          "backend/app/api/v1/submissions.py (add time_spent_seconds field)",
+          "backend/app/db/models.py (add column if persistence needed)"
+        ]
+      },
+      {
+        "content_type": "idiom",
+        "action": "Remove top-level usage_example from payload (optional cleanup)",
+        "reason": "Field is ignored by backend; data is already in external_references.examples",
+        "impact": "Reduces payload noise",
+        "files_to_update": [
+          "frontend/src/components/submission/SubmissionForm.svelte (buildPayload function)"
+        ]
+      }
+    ]
+  }
+}

@@ -12,8 +12,10 @@ from app.db.session import get_db
 from app.core.security import require_role
 from app.core.permissions import Role
 from app.db.models import AuditLog
+import logging
 
 router = APIRouter(prefix="/admin/audit_logs", tags=["admin-audit"])
+logger = logging.getLogger("app.api.admin_audit")
 
 def _apply_filters(q, action, resource_type, actor_user_id, start, end):
     if action:
@@ -63,7 +65,7 @@ def list_audit_logs(
     results = [_row_to_dict(r) for r in rows]
     return {"total": total, "results": results}
 
-@router.get("/export/csv", dependencies=[Depends(require_role(Role.ADMIN))])
+@router.get("/export/csv", dependencies=[Depends(require_role(Role.ADMIN))], deprecated=True)
 def export_audit_csv(
     action: Optional[str] = Query(None),
     resource_type: Optional[str] = Query(None),
@@ -72,6 +74,7 @@ def export_audit_csv(
     end: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
+    logger.warning("Deprecated endpoint hit: GET /admin/audit_logs/export/csv")
     q = db.query(AuditLog)
     q = _apply_filters(q, action, resource_type, actor_user_id, start, end)
     rows = q.order_by(AuditLog.created_at.desc()).all()

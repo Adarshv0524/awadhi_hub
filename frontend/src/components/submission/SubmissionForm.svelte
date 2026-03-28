@@ -1,12 +1,20 @@
 <!-- src/components/submission/SubmissionForm.svelte -->
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
+  import { validateSubmissionPayload } from "../../lib/submissionValidation";
 
   export let apiBase: string = "";
 
   type Author = { id: number; slug: string; name: string };
   type Work = { id: number; slug: string; title: string };
   type Chapter = { id: number; slug: string; title: string };
+  type PoetryTypeOption = {
+    poetry_type: string;
+    display_name: string;
+    family?: string | null;
+    is_user_defined?: boolean;
+    is_active?: boolean;
+  };
 
   let authors: Author[] = [];
   let works: Work[] = [];
@@ -15,6 +23,11 @@
   let user: any = null;
 
   let content_type = "doha";
+  const LEGACY_TYPES = ["dictionary", "idiom", "article"];
+  let poetryTypes: PoetryTypeOption[] = [
+    { poetry_type: "doha", display_name: "Doha (दोहा)", family: "classical", is_active: true },
+  ];
+  let poetryTypeError = "";
   
   // Common fields
   let main_text = "";
@@ -23,12 +36,16 @@
   // Dictionary-specific
   let lemma_devanagari = "";
   let lemma_roman = "";
+  type DictionarySenseInput = {
+    definition: string;
+    pos: string;
+    example: string;
+  };
+  let dictionarySenses: DictionarySenseInput[] = [
+    { definition: "", pos: "", example: "" },
+  ];
   
   // Idiom-specific
-  // Technical note (MED-003): Idiom submission contract is now aligned end-to-end.
-  // Frontend captures Romanized text and passes it in external_references.text_roman.
-  // Moderation canonicalization maps this into idiom_entries.text_roman during approval.
-  // See Architecture.md Section 3.4 "Submission and Moderation Alignment" for details.
   let idiom_text_roman = "";
   let usage_example = "";
   
@@ -62,6 +79,15 @@
   
   // Track initial state for unsaved changes detection
   let initialFormState = "";
+
+  $: isPoetryType = !LEGACY_TYPES.includes(content_type);
+  $: activePoetryOption = poetryTypes.find((t) => t.poetry_type === content_type) ?? null;
+  $: contentTypeOptions = [
+    ...poetryTypes.map((t) => ({ value: t.poetry_type, label: t.display_name })),
+    { value: "dictionary", label: "Dictionary Entry (शब्दकोश)" },
+    { value: "idiom", label: "Idiom/Proverb (मुहावरा)" },
+    { value: "article", label: "Article (लेख)" },
+  ];
   
   function getFormState() {
     return JSON.stringify({
@@ -70,6 +96,7 @@
       meaning,
       lemma_devanagari,
       lemma_roman,
+      dictionarySenses,
       usage_example,
       idiom_text_roman,
       title,
@@ -111,6 +138,7 @@
         meaning,
         lemma_devanagari,
         lemma_roman,
+        dictionarySenses,
         usage_example,
         idiom_text_roman,
         title,
@@ -156,6 +184,13 @@
       meaning = data.meaning || "";
       lemma_devanagari = data.lemma_devanagari || "";
       lemma_roman = data.lemma_roman || "";
+      dictionarySenses = Array.isArray(data.dictionarySenses) && data.dictionarySenses.length > 0
+        ? data.dictionarySenses.map((sense: any) => ({
+            definition: sense?.definition || "",
+            pos: sense?.pos || "",
+            example: sense?.example || "",
+          }))
+        : [{ definition: "", pos: "", example: "" }];
       usage_example = data.usage_example || "";
       idiom_text_roman = data.idiom_text_roman || "";
       title = data.title || "";
@@ -170,7 +205,6 @@
       external_refs = data.external_refs || "";
       visibility = data.visibility || "private";
       
-      console.log("Restored draft from cache");
     } catch (e) {
       console.error("Failed to restore from cache:", e);
     }
@@ -201,6 +235,13 @@
   
   function buildPayload(submitForReview: boolean, timeSpent?: number) {
     const parsedExternalReferences = external_refs ? JSON.parse(external_refs) : {};
+    const normalizedSenses = dictionarySenses
+      .map((sense) => ({
+        definition: String(sense.definition || "").trim(),
+        pos: String(sense.pos || "").trim(),
+        examples: String(sense.example || "").trim() ? [String(sense.example || "").trim()] : undefined,
+      }))
+      .filter((sense) => Boolean(sense.definition));
     const payload: any = {
       content_type,
       submit_for_review: submitForReview,
@@ -214,10 +255,14 @@
     
     // Type-specific fields
     if (content_type === "dictionary") {
-      payload.lemma_devanagari = lemma_devanagari || null;
-      payload.lemma_roman = lemma_roman || null;
-      payload.main_text = lemma_devanagari || lemma_roman || null; // Fallback
-      payload.meaning = meaning || null;
+      payload.main_text = lemma_devanagari || lemma_roman || null;
+      payload.meaning = normalizedSenses[0]?.definition || meaning || null;
+      payload.external_references = {
+        ...parsedExternalReferences,
+        lemma_devanagari: lemma_devanagari || null,
+        lemma_roman: lemma_roman || null,
+        senses: normalizedSenses,
+      };
     } else if (content_type === "idiom") {
       payload.main_text = main_text || null;
       payload.meaning = meaning || null;
@@ -230,10 +275,15 @@
         examples: usage_example ? [usage_example] : null,
       };
     } else if (content_type === "article") {
-      payload.title = title || null;
       payload.main_text = content || null;
       payload.meaning = excerpt || null;
-    } else if (content_type === "doha") {
+      payload.external_references = {
+        ...parsedExternalReferences,
+        title: title || null,
+        body: content || null,
+        excerpt: excerpt || null,
+      };
+    } else {
       payload.main_text = main_text || null;
       payload.meaning = meaning || null;
     }
@@ -244,8 +294,14 @@
     payload.work_slug = selected_work_slug || null;
     payload.chapter_slug = selected_chapter_slug || null;
     payload.number_in_chapter = number_in_chapter || null;
-    if (content_type !== "idiom") {
+    if (!["idiom", "dictionary", "article"].includes(content_type)) {
       payload.external_references = Object.keys(parsedExternalReferences).length ? parsedExternalReferences : null;
+    }
+    if (isPoetryType) {
+      payload.external_references = {
+        ...(payload.external_references || {}),
+        poetry_type: content_type,
+      };
     }
     
     // Clean up null values
@@ -310,6 +366,33 @@
         console.warn("Could not fetch authors", e);
         authors = [];
       }
+
+      try {
+        const types = await safeFetch("/api/v1/poetry/types");
+        poetryTypes = Array.isArray(types)
+          ? types
+              .filter((t: any) => t?.is_active !== false && t?.poetry_type)
+              .map((t: any) => ({
+                poetry_type: String(t.poetry_type),
+                display_name: String(t.display_name || t.poetry_type),
+                family: t.family ?? null,
+                is_user_defined: Boolean(t.is_user_defined),
+                is_active: t.is_active !== false,
+              }))
+          : [];
+      } catch (e) {
+        poetryTypeError = "Could not load poetry types. Using built-in defaults.";
+        poetryTypes = [
+          { poetry_type: "doha", display_name: "Doha (दोहा)", family: "classical", is_active: true },
+          { poetry_type: "chaupai", display_name: "Chaupai", family: "classical", is_active: true },
+          { poetry_type: "jhulana", display_name: "Jhulana", family: "classical", is_active: true },
+          { poetry_type: "other_poetry", display_name: "Other Poetry", family: "user_defined", is_active: true },
+        ];
+      }
+
+      if (!poetryTypes.some((t) => t.poetry_type === content_type) && poetryTypes.length > 0) {
+        content_type = poetryTypes[0].poetry_type;
+      }
       
       // Initialize form state tracking
       initialFormState = getFormState();
@@ -362,21 +445,25 @@
       title = "";
       content = "";
       excerpt = "";
+      dictionarySenses = [{ definition: "", pos: "", example: "" }];
     } else if (content_type === "idiom") {
       lemma_devanagari = "";
       lemma_roman = "";
+      dictionarySenses = [{ definition: "", pos: "", example: "" }];
       title = "";
       content = "";
       excerpt = "";
     } else if (content_type === "article") {
       lemma_devanagari = "";
       lemma_roman = "";
+      dictionarySenses = [{ definition: "", pos: "", example: "" }];
       main_text = "";
       usage_example = "";
       idiom_text_roman = "";
-    } else if (content_type === "doha") {
+    } else {
       lemma_devanagari = "";
       lemma_roman = "";
+      dictionarySenses = [{ definition: "", pos: "", example: "" }];
       usage_example = "";
       idiom_text_roman = "";
       title = "";
@@ -422,10 +509,35 @@
     error = "";
   }
 
+  function addSense() {
+    dictionarySenses = [...dictionarySenses, { definition: "", pos: "", example: "" }];
+    handleInput();
+  }
+
+  function removeSense(index: number) {
+    if (dictionarySenses.length <= 1) return;
+    dictionarySenses = dictionarySenses.filter((_, i) => i !== index);
+    handleInput();
+  }
+
   async function submitSubmission(action: "draft" | "submit") {
     resetMessages();
     submitting = true;
     try {
+      const validationError = validateSubmissionPayload({
+        content_type,
+        main_text,
+        meaning,
+        title,
+        idiom_text_roman,
+        dictionarySenses,
+      });
+      if (validationError) {
+        error = validationError;
+        submitting = false;
+        return;
+      }
+
       const timeSpent = Math.floor((new Date().getTime() - formStartTime.getTime()) / 1000);
       const submit_for_review = action === "submit";
       const payload = buildPayload(submit_for_review, timeSpent);
@@ -472,6 +584,7 @@
     meaning = "";
     lemma_devanagari = "";
     lemma_roman = "";
+    dictionarySenses = [{ definition: "", pos: "", example: "" }];
     usage_example = "";
     idiom_text_roman = "";
     title = "";
@@ -626,14 +739,13 @@
   <div class="field">
     <label for="submission-type">Content Type</label>
     <select id="submission-type" bind:value={content_type} on:change={handleTypeChange}>
-      <option value="doha">Doha (दोहा)</option>
-      <option value="dictionary">Dictionary Entry (शब्दकोश)</option>
-      <option value="idiom">Idiom/Proverb (मुहावरा)</option>
-      <option value="article">Article (लेख)</option>
+      {#each contentTypeOptions as option}
+        <option value={option.value}>{option.label}</option>
+      {/each}
     </select>
     <p class="small" style="margin-top:6px">
-      {#if content_type === "doha"}
-        Submit a traditional Awadhi doha (couplet) with meaning
+      {#if isPoetryType}
+        Submit {activePoetryOption?.display_name || content_type} in canonical chapter sequence.
       {:else if content_type === "dictionary"}
         Add a word or phrase to the Awadhi dictionary
       {:else if content_type === "idiom"}
@@ -642,14 +754,17 @@
         Write an article about Awadhi language or culture
       {/if}
     </p>
+    {#if poetryTypeError}
+      <p class="small" style="margin-top:6px; color:#fbbf24">{poetryTypeError}</p>
+    {/if}
   </div>
 </div>
 
 <!-- Type-Specific Fields -->
 <div class="form-section">
   <h3 class="form-section-title">
-    {#if content_type === "doha"}
-      Doha Content
+    {#if isPoetryType}
+      {activePoetryOption?.display_name || "Poetry"} Content
     {:else if content_type === "dictionary"}
       Dictionary Entry
     {:else if content_type === "idiom"}
@@ -659,15 +774,15 @@
     {/if}
   </h3>
 
-  {#if content_type === "doha"}
+  {#if isPoetryType}
     <div class="field">
-      <label for="main-text">Doha Text (Devanagari) <span style="color:#ef4444">*</span></label>
+      <label for="main-text">Poetry Text (Devanagari) <span style="color:#ef4444">*</span></label>
       <textarea 
         id="main-text" 
         bind:value={main_text} 
         on:input={handleInput}
         required
-        placeholder="Enter the doha in Devanagari script..."
+        placeholder="Enter the poetry text in Devanagari script..."
       ></textarea>
     </div>
 
@@ -705,16 +820,56 @@
       />
     </div>
 
-    <div class="field">
-      <label for="meaning">Meaning / Definition <span style="color:#ef4444">*</span></label>
-      <textarea 
-        id="meaning" 
-        bind:value={meaning}
-        on:input={handleInput}
-        required
-        placeholder="Provide the meaning or definition..."
-      ></textarea>
-    </div>
+    <fieldset class="field" style="border:0;padding:0;margin:0 0 1rem 0;">
+      <legend style="margin-bottom:6px;font-weight:500;color:#cbd5e1;">Senses / Definitions <span style="color:#ef4444">*</span></legend>
+      <p class="small" style="margin-bottom:10px">Add one or more senses. Each sense should have a clear definition.</p>
+      {#each dictionarySenses as sense, index}
+        <div style="border:1px solid #334155; border-radius:8px; padding:12px; margin-bottom:10px; background:#0b1220;">
+          <div class="field" style="margin-bottom:8px;">
+            <label for={`sense-definition-${index}`}>Definition #{index + 1} <span style="color:#ef4444">*</span></label>
+            <textarea
+              id={`sense-definition-${index}`}
+              bind:value={sense.definition}
+              on:input={handleInput}
+              placeholder="Definition"
+              style="min-height:70px"
+              required
+            ></textarea>
+          </div>
+          <div class="field" style="margin-bottom:8px;">
+            <label for={`sense-pos-${index}`}>Part of Speech (optional)</label>
+            <input
+              id={`sense-pos-${index}`}
+              type="text"
+              bind:value={sense.pos}
+              on:input={handleInput}
+              placeholder="e.g., noun, verb"
+            />
+          </div>
+          <div class="field" style="margin-bottom:8px;">
+            <label for={`sense-example-${index}`}>Example (optional)</label>
+            <input
+              id={`sense-example-${index}`}
+              type="text"
+              bind:value={sense.example}
+              on:input={handleInput}
+              placeholder="Example usage"
+            />
+          </div>
+          <div style="display:flex; justify-content:flex-end;">
+            <button
+              type="button"
+              class="btn btn-ghost"
+              on:click={() => removeSense(index)}
+              disabled={dictionarySenses.length <= 1}
+            >
+              Remove Sense
+            </button>
+          </div>
+        </div>
+      {/each}
+      <button type="button" class="btn btn-primary" on:click={addSense}>+ Add Sense</button>
+    </fieldset>
     
   {:else if content_type === "idiom"}
     <div class="field">
@@ -803,6 +958,12 @@
 <!-- Metadata Section (Optional) -->
 <div class="form-section">
   <h3 class="form-section-title">Metadata (Optional)</h3>
+
+  {#if isPoetryType && !is_classical}
+    <div class="small" style="margin-bottom:10px; color:#fbbf24;">
+      Poetry submissions should usually be marked classical and mapped to author/work/chapter for sequencing.
+    </div>
+  {/if}
 
   <div class="field">
     <label for="is-classical">

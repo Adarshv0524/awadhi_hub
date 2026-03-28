@@ -148,7 +148,7 @@ const entryUrl = `${baseUrl}/dictionary/${id}`;
         />
       </div>
 
-    <Recommendations content_type="dictionary" content_id={entry.id} client:load />
+    <Recommendations content_type="dictionary" content_id={entry.id} client:visible />
 
     <div class="text-center pt-4">
       <a href="/dictionary" class="text-cyan-400 hover:text-cyan-300 underline">← Back to Dictionary</a>

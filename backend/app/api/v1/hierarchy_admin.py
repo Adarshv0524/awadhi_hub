@@ -4,11 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Any, Dict
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.db.session import get_db
 from app.db.models import ClassicalAuthor, ClassicalWork, WorkChapter, User
 from app.core.security import require_role
 from app.core.permissions import Role
+from app.services.hierarchy_cache import invalidate_hierarchy_cache
 
 router = APIRouter(prefix="/admin/hierarchy", tags=["admin-hierarchy"])
 
@@ -153,6 +155,7 @@ def create_work(
     db.add(work)
     db.commit()
     db.refresh(work)
+    invalidate_hierarchy_cache(author_slug=author.slug)
     return {
         "id": work.id,
         "author_id": work.author_id,
@@ -229,6 +232,21 @@ def create_chapter(
     if exists_num:
         raise HTTPException(status_code=400, detail="Chapter number already exists for this work")
 
+    max_existing = (
+        db.query(func.max(WorkChapter.number))
+        .filter(
+            WorkChapter.work_id == work_id,
+            WorkChapter.is_deleted == False,
+        )
+        .scalar()
+    )
+    expected_number = int(max_existing or 0) + 1
+    if data.number != expected_number:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Chapter number must be contiguous. Expected next number is {expected_number}",
+        )
+
     chapter = WorkChapter(
         work_id=work_id,
         slug=data.slug,
@@ -238,6 +256,7 @@ def create_chapter(
     db.add(chapter)
     db.commit()
     db.refresh(chapter)
+    invalidate_hierarchy_cache(author_slug=work.author.slug, work_slug=work.slug)
     return {
         "id": chapter.id,
         "work_id": chapter.work_id,
@@ -261,6 +280,11 @@ def update_chapter(
         chapter.title = data.title
 
     if data.number is not None:
+        if data.number != chapter.number:
+            raise HTTPException(
+                status_code=400,
+                detail="Renumbering chapters is not supported. Create chapters in contiguous sequence.",
+            )
         # enforce uniqueness per work
         exists_num = (
             db.query(WorkChapter)

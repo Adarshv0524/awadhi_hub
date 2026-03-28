@@ -97,3 +97,44 @@ def test_submission_create_with_auth_and_rate_limit(client, db):
         headers=headers
     )
     assert r.status_code in (200, 201)
+
+
+def test_admin_login_bypasses_rate_limit(client, db):
+    """Admin accounts should not be blocked by login rate limiter."""
+    # SETUP: Ensure table exists
+    engine = db.get_bind()
+    RateLimitCounter.__table__.create(bind=engine, checkfirst=True)
+
+    # Tight login limit for deterministic behavior
+    rate_limit_config = {
+        "login": {"limit": 3, "window_seconds": 3600},
+        "search": {"limit": 120, "window_seconds": 60},
+        "submission_create": {"limit": 20, "window_seconds": 86400},
+    }
+    existing_setting = db.query(SystemSetting).filter(SystemSetting.setting_key == "rate_limits").first()
+    if existing_setting:
+        existing_setting.value = rate_limit_config
+    else:
+        db.add(SystemSetting(setting_key="rate_limits", value=rate_limit_config))
+    db.commit()
+
+    db.query(RateLimitCounter).delete()
+    db.commit()
+
+    email = f"admin-rl-{uuid.uuid4().hex[:6]}@example.com"
+    pwd = "Aa123456!"
+    admin = User(
+        email=email,
+        username=email.split("@")[0],
+        password_hash=hash_password(pwd),
+        role="admin",
+        is_active=True,
+        is_banned=False,
+    )
+    db.add(admin)
+    db.commit()
+
+    # Intentionally wrong password many times. Should remain 401 and never flip to 429.
+    for _ in range(8):
+        r = client.post("/auth/login", json={"email": email, "password": "WrongPassword"})
+        assert r.status_code == 401

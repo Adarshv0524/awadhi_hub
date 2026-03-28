@@ -49,6 +49,12 @@
   let reportReasonSelectEl: HTMLSelectElement | null = null;
   let lastFocusedElement: HTMLElement | null = null;
 
+  function safeLog(context: string, err: any) {
+    if (!import.meta.env.DEV) return;
+    const status = err?.status || err?.code || "unknown";
+    console.warn(`[InteractionBar] ${context} (status=${status})`);
+  }
+
   // ✅ Save state to localStorage
   function saveState() {
     if (typeof window !== "undefined") {
@@ -98,7 +104,7 @@
         bookmarks += wasActive ? 1 : -1;
       }
       error = e.message || "Failed to update";
-      console.error("[InteractionBar] Toggle failed:", e);
+      safeLog("Toggle failed", e);
     } finally {
       busy = false;
     }
@@ -175,7 +181,7 @@
       } else {
         error = e.message || "Failed to copy link";
       }
-      console.error("[InteractionBar] Share failed:", e);
+      safeLog("Share failed", e);
     }
   }
 
@@ -219,7 +225,7 @@
           bookmarks = data.bookmarks ?? bookmarks;
           shares = data.shares ?? shares;
         } catch (e) {
-          console.error("[InteractionBar] Failed to restore state:", e);
+          safeLog("Failed to restore state", e);
         }
       }
 
@@ -309,7 +315,7 @@
       closeReportModal();
     } catch (e: any) {
       error = e.message || "Report failed";
-      console.error("[InteractionBar] Report failed:", e);
+      safeLog("Report failed", e);
     }
   }
 </script>
@@ -524,6 +530,7 @@
       role="dialog"
       aria-modal="true"
       aria-labelledby="report-modal-title"
+      aria-describedby="report-modal-description"
       bind:this={reportDialogEl}
     >
       <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
@@ -532,6 +539,9 @@
       </div>
       
       <div class="px-6 py-4 space-y-4">
+        <p id="report-modal-description" class="text-sm text-slate-400">
+          Report inappropriate or incorrect content. This action is reviewed by moderators.
+        </p>
         <div>
           <label for="report-reason" class="block text-sm font-medium text-slate-300 mb-2">Reason for reporting</label>
           <select id="report-reason" bind:value={reportReason} bind:this={reportReasonSelectEl} class="w-full bg-slate-900 border border-slate-600 text-slate-200 px-3 py-2 rounded focus:border-cyan-400 focus:outline-none">

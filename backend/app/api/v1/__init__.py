@@ -18,3 +18,4 @@ from . import article  # noqa
 from app.api.v1 import recommendations
 
 from . import interactions  # noqa
+from . import poetry  # noqa

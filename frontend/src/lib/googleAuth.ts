@@ -3,15 +3,21 @@ export type GoogleAuthOptions = {
 };
 
 export function initiateGoogleAuth(options: GoogleAuthOptions = {}): void {
-  const clientId = import.meta.env.PUBLIC_GOOGLE_CLIENT_ID;
+  const clientId = import.meta.env.PUBLIC_GOOGLE_CLIENT_ID || import.meta.env.GOOGLE_CLIENT_ID;
   const runtimeOrigin = window.location.origin.replace(/\/$/, "");
   const apiBase = (import.meta.env.PUBLIC_API_BASE || runtimeOrigin).replace(/\/$/, "");
 
+  const next = options.next && options.next.startsWith("/") ? options.next : "/";
+
+  // If frontend Google client id is not configured, delegate to backend OAuth start endpoint.
+  // This keeps login working with server-side configuration only.
   if (!clientId) {
-    throw new Error("PUBLIC_GOOGLE_CLIENT_ID is not configured");
+    const loginUrl = new URL(`${apiBase}/auth/oauth/google/login`);
+    loginUrl.searchParams.set("next", next);
+    window.location.href = loginUrl.toString();
+    return;
   }
 
-  const next = options.next && options.next.startsWith("/") ? options.next : "/";
   const state = generateState();
   const packedState = `${state}.${next}`;
 

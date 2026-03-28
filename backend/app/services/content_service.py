@@ -4,11 +4,13 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from pydantic import BaseModel, ValidationError
 
 from app.db.models import (
     Submission,
     DohaEntry,
+    PoetryNode,
     DictionaryEntry,
     IdiomEntry,
     ArticleEntry,
@@ -22,6 +24,7 @@ from app.db.models import (
 from app.services.audit_service import record_audit
 from app.utils.text_normalize import normalize_roman
 from app.schemas.content_navigation import ContentNavCard, ContentNavigationOut
+from app.schemas.poetry import SUPPORTED_POETRY_TYPES
 
 logger = logging.getLogger("app.content_service")
 
@@ -369,6 +372,95 @@ def create_canonical_doha_from_submission(
         logger.exception("Failed to create canonical doha for submission %s: %s", getattr(submission, "id", None), e)
         # Re-raise so caller sees it (and transaction will be rolled back)
         raise
+
+
+def _next_sequence_for_chapter(db: Session, chapter_id: int) -> int:
+    max_seq = (
+        db.query(func.max(PoetryNode.sequence_no))
+        .filter(
+            PoetryNode.chapter_id == chapter_id,
+            PoetryNode.is_deleted == False,
+        )
+        .scalar()
+    )
+    return int(max_seq or 0) + 1
+
+
+def create_canonical_poetry_node_from_submission(db: Session, submission: Submission, moderator_user: User) -> Optional[int]:
+    """
+    Create a canonical poetry node for any poetry-form submission.
+    Returns node id, or None when submission type is not a poetry form.
+    """
+    poetry_type = (submission.content_type or "").strip().lower()
+    non_poetry_types = {"dictionary", "idiom", "article"}
+    if poetry_type in non_poetry_types:
+        return None
+    if poetry_type not in SUPPORTED_POETRY_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported poetry content_type: {poetry_type}")
+
+    existing = (
+        db.query(PoetryNode)
+        .filter(
+            PoetryNode.source_submission_id == submission.id,
+            PoetryNode.is_deleted == False,
+        )
+        .first()
+    )
+    if existing:
+        return existing.id
+
+    if not submission.is_classical:
+        raise HTTPException(
+            status_code=400,
+            detail="Poetry submissions must be classical and include hierarchy metadata",
+        )
+
+    author, work, chapter, _ = _resolve_classical_hierarchy_for_submission(db, submission)
+
+    sequence_no = submission.number_in_chapter if submission.number_in_chapter and submission.number_in_chapter > 0 else None
+    if sequence_no is None:
+        sequence_no = _next_sequence_for_chapter(db, chapter.id)
+
+    refs = submission.external_references or {}
+    node = PoetryNode(
+        author_id=author.id,
+        work_id=work.id,
+        chapter_id=chapter.id,
+        poetry_type=poetry_type,
+        sequence_no=sequence_no,
+        main_text=submission.main_text,
+        text_devanagari=refs.get("text_devanagari") or submission.main_text,
+        text_romanized=refs.get("text_roman") or refs.get("text_romanized"),
+        meaning=submission.meaning,
+        prosody_metadata=refs if refs else None,
+        status="active",
+        visibility="public",
+        source_submission_id=submission.id,
+        created_by=submission.contributor_id,
+        verified_by=int(getattr(moderator_user, "id", 0)) if moderator_user else None,
+        version=1,
+    )
+    db.add(node)
+    db.flush()
+
+    try:
+        cv = ContentVersion(
+            content_type=poetry_type,
+            content_id=node.id,
+            version_number=1,
+            main_text=node.main_text,
+            meaning=node.meaning,
+            text_devanagari=node.text_devanagari,
+            text_romanized=node.text_romanized,
+            created_by=submission.contributor_id,
+            notes=f"Created poetry node from submission {submission.id}",
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(cv)
+    except Exception:
+        logger.exception("ContentVersion write failed for poetry node; continuing")
+
+    return node.id
 
 def create_canonical_dictionary_from_submission(db: Session, submission, moderator_user) -> int:
     """

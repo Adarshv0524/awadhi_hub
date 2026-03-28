@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { ApiError, api } from "./api";
 import type { AuthUser } from "./schemas";
 
 const ACCESS_KEY = "awadhi_access_token";
@@ -28,7 +28,10 @@ export async function fetchMe(force = false): Promise<AuthUser | null> {
     const me = await api<AuthUser>("/auth/me");
     localStorage.setItem(USER_CACHE_KEY, JSON.stringify(me));
     return me;
-  } catch {
+  } catch (e) {
+    if (e instanceof ApiError && (e.status === 401 || e.status === 403 || e.status === 404)) {
+      clearAuth();
+    }
     return null;
   }
 }

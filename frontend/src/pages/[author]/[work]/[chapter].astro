@@ -3,14 +3,13 @@ export const prerender = false;
 
 import BaseLayout from "../../../layouts/BaseLayout.astro";
 import { api } from "../../../lib/api";
-import Breadcrumbs from "../../../components/content/Breadcrumbs.svelte";
-import ChapterList from "../../../components/content/ChapterList.svelte";
+import PoetryChapterReader from "../../../components/content/poetry/PoetryChapterReader.svelte";
 import "../../../styles/chapter.css";
 
 /**
  * Chapter page:
- * - Dedicated chapter doha endpoint: /content/by-path/{author}/{work}/{chapter}/dohas
- * - Fetch only first page on server and incrementally load additional pages on client
+ * - Uses poetry stream endpoint: /api/v1/poetry/chapters/{chapter_id}/stream
+ * - Renders mixed poetry forms in chapter sequence through a dispatcher
  */
 
 const params = Astro.params ?? {};
@@ -29,29 +28,37 @@ const safeDecode = (s: any) => {
   catch (e) { return String(s ?? ""); }
 };
 const displayTitle = (() => (safeDecode(chapter) || "").replace(/-/g, " "));
-
-const hierarchy = `${author}/${work}/${chapter}`;
 const encodedPath = [author, work, chapter].map((p) => encodeURIComponent(String(p))).join("/");
-const chapterDohasBase = `/content/by-path/${encodedPath}/dohas`;
-const pageSize = 30;
 
-let chapterItems = [];
+let chapterItems: any[] = [];
 let total = 0;
 let pageError = null;
 let isEmptyChapter = false;
-let sequenceUnitLabel = "Verse";
-let nextOffset = 0;
+let chapterId: number | null = null;
+let streamHierarchy: any = null;
+const SSR_STREAM_LIMIT = 25;
+
+const authorName = safeDecode(author).replace(/-/g, " ");
+const workName = safeDecode(work).replace(/-/g, " ");
 
 // Server-side fetch flow
 try {
-  const firstPage = await api(`${chapterDohasBase}?offset=0&limit=${pageSize}`);
-  chapterItems = Array.isArray(firstPage?.items) ? firstPage.items : [];
-  total = Number(firstPage?.total ?? chapterItems.length);
-  nextOffset = chapterItems.length;
-  isEmptyChapter = chapterItems.length === 0;
-  if (chapterItems.some((item: any) => item?.content_type === "poem")) {
-    sequenceUnitLabel = "Stanza";
+  const chapters = await api<any[]>(`/authors/${encodeURIComponent(author)}/works/${encodeURIComponent(work)}/chapters?offset=0&limit=500`);
+  const currentChapter = Array.isArray(chapters)
+    ? chapters.find((item: any) => String(item?.slug) === String(chapter))
+    : null;
+
+  if (!currentChapter?.id) {
+    pageError = "Chapter not found in hierarchy.";
+  } else {
+    chapterId = Number(currentChapter.id);
+    const stream = await api<any>(`/api/v1/poetry/chapters/${chapterId}/stream?offset=0&limit=${SSR_STREAM_LIMIT}`);
+    chapterItems = Array.isArray(stream?.items) ? stream.items : [];
+    total = Number(stream?.total ?? chapterItems.length);
+    streamHierarchy = stream?.hierarchy || null;
   }
+
+  isEmptyChapter = chapterItems.length === 0;
 } catch (err) {
   console.error("[Chapter] Unexpected error:", err);
   pageError = "Unexpected error while loading chapter.";
@@ -59,9 +66,15 @@ try {
 ---
 
 <BaseLayout title={displayTitle || "Chapter · Awadhi New"}>
-  <div class="mb-5">
-    <Breadcrumbs path={hierarchy} client:load />
-  </div>
+  <nav aria-label="Breadcrumb" class="mb-5 overflow-x-auto rounded-lg border border-slate-800/80 bg-slate-900/35 px-3 py-2">
+    <ol class="inline-flex min-w-full items-center gap-2 whitespace-nowrap text-sm text-slate-300">
+      <li class="max-w-[9rem] truncate md:max-w-[14rem]"><a class="truncate-soft hover:text-cyan-300" href={`/${encodeURIComponent(author)}`}>{streamHierarchy?.author?.name || authorName}</a></li>
+      <li aria-hidden="true">/</li>
+      <li class="max-w-[9rem] truncate md:max-w-[16rem]"><a class="truncate-soft hover:text-cyan-300" href={`/${encodeURIComponent(author)}/${encodeURIComponent(work)}`}>{streamHierarchy?.work?.title || workName}</a></li>
+      <li aria-hidden="true">/</li>
+      <li aria-current="page" class="max-w-[9.5rem] truncate text-slate-100 md:max-w-[20rem]">{streamHierarchy?.chapter?.title || displayTitle}</li>
+    </ol>
+  </nav>
 
   {pageError && (
     <div class="rounded-lg border border-amber-400/35 bg-amber-500/10 p-4 mb-5">
@@ -70,10 +83,10 @@ try {
   )}
 
   {isEmptyChapter && (
-    <div class="rounded-2xl border border-slate-700 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
+    <div class="glass-panel p-6 md:p-7">
       <h1 class="text-3xl font-serif text-slate-100 mb-3">{displayTitle}</h1>
       <p class="text-slate-300 mb-5">There is no content in this chapter yet. You can check other chapters or return to the work page.</p>
-      <div class="flex gap-4">
+      <div class="flex flex-wrap gap-4">
         <a href={`/${encodeURIComponent(author)}/${encodeURIComponent(work)}`} class="text-cyan-300 hover:text-cyan-200">Back to {safeDecode(work).replace(/-/g," ")}</a>
         <a href={`/${encodeURIComponent(author)}`} class="text-slate-300 hover:text-slate-100">All works by {safeDecode(author)}</a>
       </div>
@@ -81,18 +94,19 @@ try {
   )}
 
   {!isEmptyChapter && chapterItems.length > 0 && (
-    <section class="rounded-2xl border border-slate-700 bg-slate-900/50 p-5 md:p-6">
-      <h1 class="text-3xl font-serif text-slate-100 mb-5">{displayTitle}</h1>
-      <p class="text-sm text-slate-400 mb-4">Total verses: {total}</p>
-      <ChapterList
+    <section class="glass-panel p-4 md:p-6">
+      <h1 class="text-3xl font-serif text-slate-100 mb-2">{streamHierarchy?.chapter?.title || displayTitle}</h1>
+      <p class="text-sm text-slate-400 mb-4">Total items: {total}</p>
+      {chapterId && (
+        <PoetryChapterReader
         client:load
-        endpointBase={chapterDohasBase}
-        initialItems={chapterItems}
+        chapterId={chapterId}
+        hierarchy={streamHierarchy}
+        items={chapterItems}
         total={total}
-        initialOffset={nextOffset}
-        pageSize={pageSize}
-        sequenceUnitLabel={sequenceUnitLabel}
+        initialLimit={SSR_STREAM_LIMIT}
       />
+      )}
 
       <div class="mt-6">
         <a href={`/${encodeURIComponent(author)}/${encodeURIComponent(work)}`} class="text-cyan-300 hover:text-cyan-200">← Back to {safeDecode(work).replace(/-/g, " ")}</a>

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, literal, cast, Float
@@ -22,13 +22,11 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 class PublicUserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     username: Optional[str]
     role: str
-
-    class Config:
-        orm_mode = True
-
 
 class UserStatsOut(BaseModel):
     username: str = Field(..., description="Public username for the profile.")
@@ -88,6 +86,7 @@ def _contribution_content_union_for_user(user_id: int):
             Submission.status == "approved",
             Submission.visibility == "public",
             Submission.is_deleted == False,
+            DictionaryEntry.source_submission_id.isnot(None),
             DictionaryEntry.visibility == "public",
         )
     )
@@ -102,6 +101,7 @@ def _contribution_content_union_for_user(user_id: int):
             Submission.status == "approved",
             Submission.visibility == "public",
             Submission.is_deleted == False,
+            IdiomEntry.source_submission_id.isnot(None),
             IdiomEntry.visibility == "public",
         )
     )
@@ -116,6 +116,7 @@ def _contribution_content_union_for_user(user_id: int):
             Submission.status == "approved",
             Submission.visibility == "public",
             Submission.is_deleted == False,
+            ArticleEntry.source_submission_id.isnot(None),
             ArticleEntry.visibility == "public",
         )
     )

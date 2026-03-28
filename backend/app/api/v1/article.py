@@ -2,7 +2,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional, Literal
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func, and_, asc, desc
@@ -11,8 +11,10 @@ from app.db.session import get_db
 from app.db.models import ArticleEntry, EngagementKPI, User
 from app.core.security import get_current_user, require_role
 from app.core.permissions import Role
+import logging
 
 router = APIRouter(prefix="/articles", tags=["articles"])
+logger = logging.getLogger("app.api.article")
 
 # ----------------------------
 # KPI helpers
@@ -61,6 +63,8 @@ def _inc_view_kpi(db: Session, article_id: int):
 
 # Pydantic models
 class ArticleListOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     title: str
     title_devanagari: Optional[str]
@@ -77,10 +81,9 @@ class ArticleListOut(BaseModel):
     search_hits_count: int = 0
     weight_score: float = 0.0
     
-    class Config:
-        from_attributes = True
-
 class ArticleDetailOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     title: str
     title_devanagari: Optional[str]
@@ -104,9 +107,6 @@ class ArticleDetailOut(BaseModel):
     search_hits_count: int = 0
     weight_score: float = 0.0
     
-    class Config:
-        from_attributes = True
-
 class ArticleStatsOut(BaseModel):
     total_articles: int
     by_tag: dict
@@ -338,7 +338,7 @@ def get_article_stats(db: Session = Depends(get_db)):
         recent_count=recent or 0
     )
 
-@router.get("/search/advanced")
+@router.get("/search/advanced", deprecated=True)
 def advanced_search_articles(
     title: Optional[str] = Query(None),
     body: Optional[str] = Query(None),
@@ -350,6 +350,7 @@ def advanced_search_articles(
     """
     Advanced search with multiple filters.
     """
+    logger.warning("Deprecated endpoint hit: GET /articles/search/advanced")
     query = db.query(ArticleEntry).filter(ArticleEntry.visibility == "public")
     
     if title:
@@ -385,11 +386,12 @@ def advanced_search_articles(
         for r in rows
     ]
 
-@router.get("/tags/list")
+@router.get("/tags/list", deprecated=True)
 def list_all_tags(db: Session = Depends(get_db)):
     """
     Get a list of all unique tags used in articles.
     """
+    logger.warning("Deprecated endpoint hit: GET /articles/tags/list")
     articles = db.query(ArticleEntry).filter(
         ArticleEntry.visibility == "public",
         ArticleEntry.tags.isnot(None)
@@ -403,7 +405,7 @@ def list_all_tags(db: Session = Depends(get_db)):
     return {"tags": sorted(list(all_tags))}
 
 
-@router.get("/recent/list")
+@router.get("/recent/list", deprecated=True)
 def get_recent_articles(
     days: int = Query(30, ge=1, le=365, description="Number of days to look back"),
     limit: int = Query(10, ge=1, le=50),
@@ -412,6 +414,7 @@ def get_recent_articles(
     """
     Get recently published articles.
     """
+    logger.warning("Deprecated endpoint hit: GET /articles/recent/list")
     from datetime import datetime, timedelta
     
     cutoff_date = datetime.utcnow() - timedelta(days=days)

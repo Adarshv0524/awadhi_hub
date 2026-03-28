@@ -198,11 +198,11 @@ const dohaDescription =
     <Recommendations
       content_type="doha"
       content_id={doha.id}
-      client:load
+      client:visible
     />
 
     <!-- Content history (Doha only) -->
-    <ContentHistory dohaId={doha.id} client:load />
+    <ContentHistory dohaId={doha.id} client:visible />
 
     <div class="text-center pt-4">
       <a href="/doha" class="text-cyan-400 hover:text-cyan-300 underline">← Back to Doha</a>

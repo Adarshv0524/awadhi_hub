@@ -12,6 +12,7 @@
   let offset = 0;
   let limit = 50;
   let currentUser = null;
+  let page = 1;
 
   // contributor id -> { id, username, email }
   let contributorsMap = new Map();
@@ -195,15 +196,35 @@
       console.error(e);
     }
   }
+
+  async function goPrevPage() {
+    if (offset === 0) return;
+    offset = Math.max(0, offset - limit);
+    page = Math.floor(offset / limit) + 1;
+    await load();
+  }
+
+  async function goNextPage() {
+    if (items.length < limit) return;
+    offset += limit;
+    page = Math.floor(offset / limit) + 1;
+    await load();
+  }
+
+  async function resetAndReload() {
+    offset = 0;
+    page = 1;
+    await load();
+  }
 </script>
 
 <div class="mb-4 flex items-center gap-3">
   <label class="inline-flex items-center gap-2">
-    <input type="checkbox" bind:checked={assignedOnly} on:change={load} />
+    <input type="checkbox" bind:checked={assignedOnly} on:change={resetAndReload} />
     <span>Assigned to me</span>
   </label>
   <label class="inline-flex items-center gap-2">
-    <input type="checkbox" bind:checked={unassignedOnly} on:change={load} />
+    <input type="checkbox" bind:checked={unassignedOnly} on:change={resetAndReload} />
     <span>Unassigned only</span>
   </label>
 
@@ -281,4 +302,12 @@
       {/each}
     </tbody>
   </table>
+
+  <div class="mt-4 flex items-center justify-between gap-2">
+    <p class="text-sm text-slate-500">Page {page} · Showing up to {limit} items</p>
+    <div class="flex items-center gap-2">
+      <button class="px-3 py-1 border rounded disabled:opacity-40" on:click={goPrevPage} disabled={offset === 0}>Previous</button>
+      <button class="px-3 py-1 border rounded disabled:opacity-40" on:click={goNextPage} disabled={items.length < limit}>Next</button>
+    </div>
+  </div>
 {/if}

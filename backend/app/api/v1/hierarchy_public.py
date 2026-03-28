@@ -1,12 +1,19 @@
 # app/api/v1/hierarchy_public.py
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from app.db.session import get_db
-from app.db.models import ClassicalAuthor, ClassicalWork, WorkChapter
+from app.db.models import ClassicalAuthor, ClassicalWork, WorkChapter, PoetryNode
+from app.services.hierarchy_cache import (
+    get_cached_value,
+    set_cached_value,
+    make_works_cache_key,
+    make_chapters_cache_key,
+)
 
 router = APIRouter(prefix="/authors", tags=["authors"])
 
@@ -14,17 +21,17 @@ router = APIRouter(prefix="/authors", tags=["authors"])
 # ---------- Pydantic response models ----------
 
 class AuthorListOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     slug: str
     name: str
     short_bio: Optional[str]
     language: Optional[str]
 
-    class Config:
-        orm_mode = True
-
-
 class AuthorDetailOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     slug: str
     name: str
@@ -32,34 +39,28 @@ class AuthorDetailOut(BaseModel):
     long_bio: Optional[str]
     language: Optional[str]
 
-    class Config:
-        orm_mode = True
-
-
 class WorkOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     slug: str
     title: str
     description: Optional[str]
     work_type: Optional[str]
-
-    class Config:
-        orm_mode = True
-
+    poetry_nodes_count: int = 0
 
 class WorkDetailOut(WorkOut):
     original_script: Optional[str]
 
 
 class ChapterOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     slug: str
     title: str
     number: int
-
-    class Config:
-        orm_mode = True
-
+    poetry_nodes_count: int = 0
 
 # ---------- Public endpoints ----------
 
@@ -132,20 +133,51 @@ def list_works_for_author(
     if not author:
         raise HTTPException(status_code=404, detail="Author not found")
 
-    q = db.query(ClassicalWork).filter(
-        ClassicalWork.author_id == author.id,
-        ClassicalWork.is_deleted == False,
+    cache_key = make_works_cache_key(author_slug=author_slug, work_type=work_type, offset=offset, limit=limit)
+    cached = get_cached_value(cache_key)
+    if cached is not None:
+        return cached
+
+    q = (
+        db.query(
+            ClassicalWork,
+            func.count(PoetryNode.id).label("poetry_nodes_count"),
+        )
+        .outerjoin(
+            PoetryNode,
+            (PoetryNode.work_id == ClassicalWork.id)
+            & (PoetryNode.is_deleted == False)
+            & (PoetryNode.status == "active")
+            & (PoetryNode.visibility == "public"),
+        )
+        .filter(
+            ClassicalWork.author_id == author.id,
+            ClassicalWork.is_deleted == False,
+        )
     )
     if work_type:
         q = q.filter(ClassicalWork.work_type == work_type)
 
     works = (
-        q.order_by(ClassicalWork.title.asc())
+        q.group_by(ClassicalWork.id)
+        .order_by(ClassicalWork.title.asc())
         .offset(offset)
         .limit(limit)
         .all()
     )
-    return works
+    response = [
+        WorkOut(
+            id=work.id,
+            slug=work.slug,
+            title=work.title,
+            description=work.description,
+            work_type=work.work_type,
+            poetry_nodes_count=int(poetry_nodes_count or 0),
+        )
+        for work, poetry_nodes_count in works
+    ]
+    set_cached_value(cache_key, response)
+    return response
 
 
 @router.get("/{author_slug}/works/{work_slug}", response_model=WorkDetailOut)
@@ -212,15 +244,42 @@ def list_chapters(
     if not work:
         raise HTTPException(status_code=404, detail="Work not found")
 
+    cache_key = make_chapters_cache_key(author_slug=author_slug, work_slug=work_slug, offset=offset, limit=limit)
+    cached = get_cached_value(cache_key)
+    if cached is not None:
+        return cached
+
     chapters = (
-        db.query(WorkChapter)
+        db.query(
+            WorkChapter,
+            func.count(PoetryNode.id).label("poetry_nodes_count"),
+        )
+        .outerjoin(
+            PoetryNode,
+            (PoetryNode.chapter_id == WorkChapter.id)
+            & (PoetryNode.is_deleted == False)
+            & (PoetryNode.status == "active")
+            & (PoetryNode.visibility == "public"),
+        )
         .filter(
             WorkChapter.work_id == work.id,
             WorkChapter.is_deleted == False,
         )
+        .group_by(WorkChapter.id)
         .order_by(WorkChapter.number.asc())
         .offset(offset)
         .limit(limit)
         .all()
     )
-    return chapters
+    response = [
+        ChapterOut(
+            id=chapter.id,
+            slug=chapter.slug,
+            title=chapter.title,
+            number=chapter.number,
+            poetry_nodes_count=int(poetry_nodes_count or 0),
+        )
+        for chapter, poetry_nodes_count in chapters
+    ]
+    set_cached_value(cache_key, response)
+    return response

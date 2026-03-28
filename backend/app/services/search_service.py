@@ -25,23 +25,20 @@ def _mysql_match_query(
     Now includes joins with classical_authors for proper filtering.
     """
     
-    # Base join with authors for filtering
+    # Base join with hierarchy tables for filtering and KPI tie-break ordering.
     join_clause = """
         LEFT JOIN classical_authors ca ON doha_entries.author_id = ca.id
         LEFT JOIN classical_works cw ON doha_entries.work_id = cw.id
         LEFT JOIN work_chapters wc ON doha_entries.chapter_id = wc.id
-    """
-    
-    # Add engagement join if sorting by popularity
-    if sort == "popular":
-        join_clause += """
         LEFT JOIN engagement_kpis ek ON doha_entries.id = ek.content_id AND ek.content_type = 'doha'
-        """
-        order_clause = "COALESCE(ek.weight_score, 0) DESC, relevance DESC"
+    """
+
+    if sort == "popular":
+        order_clause = "COALESCE(ek.weight_score, 0) DESC, relevance DESC, doha_entries.created_at DESC"
     elif sort == "recent":
         order_clause = "doha_entries.created_at DESC"
     else:
-        order_clause = "relevance DESC"
+        order_clause = "relevance DESC, COALESCE(ek.weight_score, 0) DESC, doha_entries.created_at DESC"
 
     sql = f"""
     SELECT
@@ -134,7 +131,11 @@ def search_dohas(
         elif sort == "recent":
             base = base.order_by(DohaEntry.created_at.desc())
         else:
-            base = base.order_by(DohaEntry.id.desc())
+            base = base.outerjoin(
+                EngagementKPI,
+                (EngagementKPI.content_id == DohaEntry.id)
+                & (EngagementKPI.content_type == "doha"),
+            ).order_by(func.coalesce(EngagementKPI.weight_score, 0).desc(), DohaEntry.created_at.desc())
 
         total = base.count()
         rows = base.offset(offset).limit(limit).all()
@@ -183,8 +184,7 @@ def search_dohas(
             LEFT JOIN work_chapters wc ON doha_entries.chapter_id = wc.id
         """
         
-        if sort == "popular":
-            count_join += " LEFT JOIN engagement_kpis ek ON doha_entries.id = ek.content_id AND ek.content_type = 'doha'"
+        # Keep count query filter-only, independent from ordering joins.
 
         count_sql = f"""
         SELECT COUNT(*) as total FROM (
@@ -257,7 +257,11 @@ def search_dohas(
         elif sort == "recent":
             base = base.order_by(DohaEntry.created_at.desc())
         else:
-            base = base.order_by(DohaEntry.id.desc())
+            base = base.outerjoin(
+                EngagementKPI,
+                (EngagementKPI.content_id == DohaEntry.id)
+                & (EngagementKPI.content_type == "doha"),
+            ).order_by(func.coalesce(EngagementKPI.weight_score, 0).desc(), DohaEntry.created_at.desc())
 
         total = base.count()
         rows = base.offset(offset).limit(limit).all()

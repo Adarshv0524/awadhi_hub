@@ -29,6 +29,7 @@
   let lemma_roman = "";
   
   // Idiom-specific
+  let idiom_text_roman = "";
   let usage_example = "";
   
   // Article-specific
@@ -49,6 +50,18 @@
   let submitting = false;
   let message = "";
   let error = "";
+
+  function parseExternalReferences(raw: unknown): Record<string, any> {
+    if (!raw) return {};
+    if (typeof raw === "object") return raw as Record<string, any>;
+    if (typeof raw !== "string") return {};
+    try {
+      const parsed = JSON.parse(raw);
+      return typeof parsed === "object" && parsed !== null ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
 
   function getAuthHeader() {
     if (typeof window === "undefined") return {};
@@ -78,6 +91,8 @@
       lemma_devanagari = submission.lemma_devanagari || "";
       lemma_roman = submission.lemma_roman || "";
       usage_example = submission.usage_example || "";
+      const submissionExternalReferences = parseExternalReferences(submission.external_references);
+      idiom_text_roman = String(submissionExternalReferences.text_roman || "");
       title = submission.title || "";
       content = submission.content || "";
       excerpt = submission.excerpt || "";
@@ -87,7 +102,9 @@
       selected_work_slug = submission.work_slug || "";
       selected_chapter_slug = submission.chapter_slug || "";
       number_in_chapter = submission.number_in_chapter;
-      external_refs = submission.external_refs || "";
+      external_refs = submission.external_references
+        ? JSON.stringify(submission.external_references, null, 2)
+        : "";
       visibility = submission.visibility || "private";
 
       if (submission.author_slug) {
@@ -148,20 +165,33 @@
     message = "";
     error = "";
 
+    const parsedExternalReferences = parseExternalReferences(external_refs);
     const payload: any = {
       content_type,
       main_text: main_text.trim(),
       meaning: meaning.trim(),
       is_classical,
       visibility,
-      expectedVersion
+      expected_version: expectedVersion,
     };
 
     if (content_type === "dictionary") {
       payload.lemma_devanagari = lemma_devanagari.trim();
       payload.lemma_roman = lemma_roman.trim();
     } else if (content_type === "idiom") {
+      if (!idiom_text_roman.trim()) {
+        error = "Romanized Text is required for idiom updates.";
+        submitting = false;
+        return;
+      }
       payload.usage_example = usage_example.trim();
+      payload.external_references = {
+        ...parsedExternalReferences,
+        text_devanagari: main_text.trim() || null,
+        text_roman: idiom_text_roman.trim(),
+        meaning: meaning.trim() || null,
+        examples: usage_example.trim() ? [usage_example.trim()] : null,
+      };
     } else if (content_type === "article") {
       payload.title = title.trim();
       payload.content = content.trim();
@@ -181,7 +211,9 @@
     if (number_in_chapter !== null && number_in_chapter > 0) {
       payload.number_in_chapter = number_in_chapter;
     }
-    if (external_refs.trim()) payload.external_refs = external_refs.trim();
+    if (content_type !== "idiom" && external_refs.trim()) {
+      payload.external_references = parsedExternalReferences;
+    }
 
     try {
       const res = await fetch(`${apiBase}/submissions/${submissionId}`, {
@@ -303,6 +335,17 @@
     </div>
 
     {#if content_type === "idiom"}
+      <div>
+        <label for="idiom-text-roman" class="block font-medium mb-2">Romanized Text *</label>
+        <input
+          id="idiom-text-roman"
+          type="text"
+          bind:value={idiom_text_roman}
+          required
+          class="w-full p-2 border rounded"
+          placeholder="e.g., andhon mein kana raja"
+        />
+      </div>
       <div>
         <label class="block font-medium mb-2">Usage Example</label>
         <textarea bind:value={usage_example} rows="3" class="w-full p-2 border rounded" placeholder="Example usage"></textarea>

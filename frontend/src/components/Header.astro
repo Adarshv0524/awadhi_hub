@@ -4,49 +4,90 @@ import AuthStatus from "./auth/AuthStatus.svelte";
 
 const currentPath = Astro.url.pathname;
 const isActive = (path: string) => currentPath === path || currentPath.startsWith(path + '/');
+
+const navLinks = [
+  { href: "/about", label: "About", tone: "cyan" },
+  { href: "/search", label: "Search", tone: "blue" },
+  { href: "/authors", label: "Authors", tone: "indigo" },
+  { href: "/leaderboard", label: "Leaderboard", tone: "teal" },
+  { href: "/submit", label: "Contribute", tone: "emerald" },
+];
 ---
 <header class="border-b border-slate-700 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 shadow-lg">
   <div class="max-w-6xl w-full mx-auto px-4 py-4 flex items-center justify-between">
-    <div class="flex items-center gap-6">
+    <div class="flex items-center gap-4 sm:gap-6">
       <a href="/" class="flex items-center gap-2 text-xl font-serif font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent hover:from-cyan-300 hover:via-blue-300 hover:to-indigo-300 transition-all">
         <img src="/favicon.svg" alt="Awadhi New Logo" class="w-11 h-11" />
         <span>Awadhi New</span>
       </a>
-      <nav class="hidden sm:flex items-center gap-4 text-sm">
-        <a 
-          href="/about" 
-          class:list={[
-            "transition-colors px-3 py-1.5 rounded",
-            isActive('/about') ? "bg-cyan-900/40 text-cyan-200 font-semibold" : "text-cyan-300 hover:text-cyan-100 hover:underline"
-          ]}
-        >About</a>
-        <a 
-          href="/search" 
-          class:list={[
-            "transition-colors px-3 py-1.5 rounded",
-            isActive('/search') ? "bg-blue-900/40 text-blue-200 font-semibold" : "text-blue-300 hover:text-blue-100 hover:underline"
-          ]}
-        >Search</a>
-        <a 
-          href="/authors" 
-          class:list={[
-            "transition-colors px-3 py-1.5 rounded",
-            isActive('/authors') ? "bg-indigo-900/40 text-indigo-200 font-semibold" : "text-indigo-300 hover:text-indigo-100 hover:underline"
-          ]}
-        >Authors</a>
-        <a 
-          href="/submit" 
-          class:list={[
-            "transition-colors px-3 py-1.5 rounded",
-            isActive('/submit') ? "bg-purple-900/40 text-purple-200 font-semibold" : "text-purple-300 hover:text-purple-100 hover:underline"
-          ]}
-        >Contribute</a>
+      <nav class="hidden md:flex items-center gap-3 text-sm">
+        {navLinks.map((link) => (
+          <a
+            href={link.href}
+            class:list={[
+              "transition-colors px-3 py-1.5 rounded",
+              isActive(link.href)
+                ? "bg-cyan-900/40 text-cyan-200 font-semibold"
+                : "text-slate-200 hover:text-white hover:bg-slate-700/50",
+            ]}
+          >
+            {link.label}
+          </a>
+        ))}
       </nav>
     </div>
 
-    <!-- AuthStatus handles role-links & user area on the client -->
-    <div>
+    <div class="hidden md:block">
       <AuthStatus client:load />
+    </div>
+
+    <button
+      id="mobile-menu-toggle"
+      type="button"
+      class="md:hidden inline-flex items-center justify-center rounded border border-slate-600 p-2 text-slate-200 hover:bg-slate-700/60"
+      aria-controls="mobile-menu"
+      aria-expanded="false"
+      aria-label="Toggle menu"
+    >
+      <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
+      </svg>
+    </button>
+  </div>
+
+  <div id="mobile-menu" class="md:hidden hidden border-t border-slate-700 bg-slate-900/95">
+    <div class="mx-auto max-w-6xl px-4 py-3 space-y-2">
+      <nav class="grid gap-1 text-sm">
+        {navLinks.map((link) => (
+          <a
+            href={link.href}
+            class:list={[
+              "rounded px-3 py-2",
+              isActive(link.href)
+                ? "bg-cyan-900/40 text-cyan-200 font-semibold"
+                : "text-slate-200 hover:bg-slate-700/70",
+            ]}
+          >
+            {link.label}
+          </a>
+        ))}
+      </nav>
+      <div class="pt-2 border-t border-slate-700">
+        <AuthStatus client:load />
+      </div>
     </div>
   </div>
 </header>
+
+<script>
+  const menuButton = document.getElementById("mobile-menu-toggle");
+  const mobileMenu = document.getElementById("mobile-menu");
+
+  if (menuButton && mobileMenu) {
+    menuButton.addEventListener("click", () => {
+      const expanded = menuButton.getAttribute("aria-expanded") === "true";
+      menuButton.setAttribute("aria-expanded", String(!expanded));
+      mobileMenu.classList.toggle("hidden", expanded);
+    });
+  }
+</script>

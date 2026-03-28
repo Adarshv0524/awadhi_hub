@@ -1,7 +1,7 @@
 # app/api/v1/admin_settings.py
 import json as _json
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 from typing import Any, List
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -17,10 +17,10 @@ class SettingIn(BaseModel):
     value: Any
 
 class SettingOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     key: str
     value: Any
-    class Config:
-        from_attributes = True
 
 @router.get("", response_model=List[SettingOut], dependencies=[Depends(require_role(Role.ADMIN))])
 def list_settings(db: Session = Depends(get_db)):

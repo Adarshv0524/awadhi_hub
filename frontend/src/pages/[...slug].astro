@@ -19,6 +19,7 @@ let data: any = null;
 let error: string | null = null;
 let pageTitle = "Awadhi New";
 let canonicalUrl = `https://awadhi.new/${slugPath}`;
+let pageDescription = "Awadhi New literary content";
 const first = segments[0];
 const isNamespaceContent = CONTENT_NAMESPACES.has(first) && n >= 2;
 const isDeepCanonical = !isNamespaceContent && n >= 4;
@@ -35,31 +36,38 @@ try {
     data = await api(`/content/by-path/${hierarchyPath}`);
     const titleCandidate = data?.title || data?.main_text || data?.text_devanagari || segments.join(" · ");
     pageTitle = `${titleCandidate} · Awadhi New`;
+    pageDescription =
+      data?.meaning || data?.excerpt || data?.body || `Canonical Awadhi content for ${titleCandidate}`;
     canonicalUrl = `https://awadhi.new/${hierarchyPath}`;
   } else if (n === 1) {
     // Author page
     const authorSlug = segments[0];
     const author: any = await api(`/authors/${authorSlug}`);
     const works = await api(`/authors/${authorSlug}/works`);
-    const dohas: any = await api(`/search?author=${authorSlug}`);
+    const dohas: any = await api(`/api/v1/poetry/search?author=${authorSlug}&limit=50`);
     data = { ...author, __works: works, __dohas: dohas.results };
     pageTitle = `${data?.name ?? authorSlug} · Awadhi New`;
+    pageDescription = data?.short_bio || `Works and poetry by ${data?.name ?? authorSlug}`;
   } else if (n === 2) {
     // Works list for author
     const [authorSlug] = segments;
     data = await api(`/authors/${authorSlug}/works`);
     pageTitle = `${authorSlug} · Works · Awadhi New`;
+    pageDescription = `Works by ${authorSlug} on Awadhi New`;
   } else if (n === 3) {
     // Chapters list for work
     const [authorSlug, workSlug] = segments;
     data = await api(`/authors/${authorSlug}/works/${workSlug}/chapters`);
     pageTitle = `${workSlug} · Chapters · Awadhi New`;
+    pageDescription = `Chapters for ${workSlug}`;
   } else {
     // Fallback: 4+ segments — treat as canonical path
     const hierarchyPath = joinPath(segments);
     data = await api(`/content/by-path/${hierarchyPath}`);
     const titleCandidate = data?.title || data?.main_text || data?.text_devanagari || segments.join(" · ");
     pageTitle = `${titleCandidate} · Awadhi New`;
+    pageDescription =
+      data?.meaning || data?.excerpt || data?.body || `Canonical Awadhi content for ${titleCandidate}`;
     canonicalUrl = `https://awadhi.new/${hierarchyPath}`;
   }
 } catch (e) {
@@ -75,18 +83,18 @@ try {
 type DohaSearchResult = {
   id: number;
   main_text: string;
+  chapter_path?: string;
+  poetry_type?: string;
+  sequence_no?: number;
 };
 
-const authorDohas: DohaSearchResult[] =
+const authorPoetry: DohaSearchResult[] =
   !error && data && n === 1 && Array.isArray(data.__dohas)
     ? (data.__dohas as DohaSearchResult[])
     : [];
 ---
 
-<BaseLayout title={pageTitle}>
-  <head>
-    <link rel="canonical" href={canonicalUrl} />
-  </head>
+<BaseLayout title={pageTitle} description={String(pageDescription).slice(0, 180)} canonicalURL={canonicalUrl}>
 
   {!error && slugPath && (
     <div class="mb-4">
@@ -133,20 +141,21 @@ const authorDohas: DohaSearchResult[] =
       </section>
 
       <section>
-        <h2 class="text-xl font-semibold text-slate-100 mb-3">Dohas</h2>
+        <h2 class="text-xl font-semibold text-slate-100 mb-3">Poetry</h2>
 
-      {authorDohas.length ? (
+      {authorPoetry.length ? (
         <ul class="space-y-2">
-          {authorDohas.map((d) => (
+          {authorPoetry.map((d) => (
             <li class="rounded-lg border border-slate-700 bg-slate-900/45 px-4 py-3">
-              <a href={`/doha/${d.id}`} class="text-slate-100 hover:text-cyan-300">
+              <a href={`/${d.chapter_path || data.slug}`} class="text-slate-100 hover:text-cyan-300">
                 {d.main_text.split("॥")[0]}॥
               </a>
+              <p class="text-xs text-slate-400 mt-1 uppercase tracking-wide">{d.poetry_type || "poetry"} · seq {d.sequence_no || "-"}</p>
             </li>
           ))}
         </ul>
       ) : (
-        <p class="text-sm text-slate-400">No dohas found.</p>
+        <p class="text-sm text-slate-400">No poetry found.</p>
       )}
       </section>
     </section>
@@ -162,6 +171,7 @@ const authorDohas: DohaSearchResult[] =
             <li class="rounded-xl border border-slate-700 bg-slate-950/45 p-4 transition-colors hover:border-cyan-400/40 hover:bg-slate-800/55">
               <a href={`/${segments[0]}/${w.slug}`} class="font-medium text-slate-100 hover:text-cyan-300">{w.title}</a>
               {w.description && <p class="text-sm text-slate-300 mt-2">{w.description}</p>}
+              <p class="text-xs uppercase tracking-wide text-slate-400 mt-2">Poetry Nodes: {w.poetry_nodes_count ?? 0}</p>
             </li>
           ))}
         </ul>
@@ -182,6 +192,7 @@ const authorDohas: DohaSearchResult[] =
               <a href={`/${segments[0]}/${segments[1]}/${c.slug}`} class="font-medium text-slate-100 hover:text-cyan-300">
                 {c.title || c.slug}
               </a>
+              <p class="text-xs uppercase tracking-wide text-slate-400 mt-2">Poetry Nodes: {c.poetry_nodes_count ?? 0}</p>
             </li>
           ))}
         </ul>

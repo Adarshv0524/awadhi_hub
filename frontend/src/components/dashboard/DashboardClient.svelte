@@ -48,6 +48,15 @@
     return routes[contentType] || contentType;
   }
 
+  function getContentHref(item: any): string {
+    if (item?.content_path) return item.content_path;
+    return `/${getContentRoute(item?.content_type)}/${item?.content_id}`;
+  }
+
+  function isLegacyType(contentType: string): boolean {
+    return contentType === "doha" || contentType === "dictionary" || contentType === "idiom" || contentType === "article";
+  }
+
   onMount(async () => {
     loading = true;
     error = "";
@@ -57,14 +66,11 @@
         error = "Not authenticated. Please log in.";
         return;
       }
-      
-      // Load submissions
-      await loadSubmissions();
-      
-      // Load bookmarks
-      await loadBookmarks();
-      
-      // Load engagement metrics
+
+      // Load independent dashboard datasets in parallel to avoid startup waterfall.
+      await Promise.all([loadSubmissions(), loadBookmarks()]);
+
+      // Engagement metrics depend on loaded submissions/bookmarks.
       await loadEngagementMetrics();
 
     } catch (e: any) {
@@ -127,26 +133,26 @@
       let totalLikes = 0;
       let totalShares = 0;
       
-      for (const sub of approvedSubmissions) {
-        // Try to fetch engagement stats for each approved submission
-        try {
+      // Cap fan-out per dashboard render and run in parallel.
+      const statsTargets = approvedSubmissions.slice(0, 20);
+      const statsResponses = await Promise.all(
+        statsTargets.map(async (sub) => {
           const contentType = sub.content_type;
           const contentId = sub.id;
-          
-          // Attempt to get stats from content endpoints
-          // This is a fallback - ideally backend should provide user-level aggregates
           const route = getContentRoute(contentType);
-          const content = await api(`/${route}/${contentId}`).catch(() => null);
-          
-          if (content) {
-            totalViews += content.views_count || content.views || 0;
-            totalLikes += content.likes_count || content.likes || 0;
-            totalShares += content.shares_count || content.shares || 0;
+          try {
+            return await api(`/${route}/${contentId}`);
+          } catch {
+            return null;
           }
-        } catch (e) {
-          // Skip individual failures
-          console.debug(`Failed to load stats for ${sub.content_type} ${sub.id}`);
-        }
+        })
+      );
+
+      for (const content of statsResponses) {
+        if (!content) continue;
+        totalViews += content.views_count || content.views || 0;
+        totalLikes += content.likes_count || content.likes || 0;
+        totalShares += content.shares_count || content.shares || 0;
       }
       
       engagementMetrics = {
@@ -544,7 +550,7 @@
                 <div class="flex justify-between items-start">
                   <div class="flex-1">
                     <a
-                      href={`/${getContentRoute(b.content_type)}/${b.content_id}`}
+                      href={getContentHref(b)}
                       class="text-cyan-400 hover:text-cyan-300 font-medium text-lg inline-block mb-2 hover:underline"
                     >
                       {b.content_title || `${b.content_type} #${b.content_id}`}
@@ -567,6 +573,9 @@
                     class:bg-purple-900={b.content_type === 'article'}
                     class:text-purple-300={b.content_type === 'article'}
                     class:border-purple-700={b.content_type === 'article'}
+                    class:bg-emerald-900={!isLegacyType(b.content_type)}
+                    class:text-emerald-300={!isLegacyType(b.content_type)}
+                    class:border-emerald-700={!isLegacyType(b.content_type)}
                   >
                     {b.content_type}
                   </span>
@@ -615,10 +624,10 @@
             <div class="text-6xl mb-4">❤️</div>
             <h4 class="text-xl font-semibold text-slate-300 mb-2">No likes yet</h4>
             <p class="text-slate-400 mb-6 max-w-md mx-auto">
-              You haven't liked any verses yet.
+              You haven't liked any content yet.
             </p>
-            <a href="/doha" class="px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white rounded-lg text-sm font-medium transition-colors">
-              Explore Doha
+            <a href="/search" class="px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white rounded-lg text-sm font-medium transition-colors">
+              Explore Content
             </a>
           </div>
         {:else}
@@ -628,7 +637,7 @@
                 <div class="flex justify-between items-start">
                   <div class="flex-1">
                     <a
-                      href={`/${getContentRoute(l.content_type)}/${l.content_id}`}
+                      href={getContentHref(l)}
                       class="text-cyan-400 hover:text-cyan-300 font-medium text-lg inline-block mb-2 hover:underline"
                     >
                       {l.content_title || `${l.content_type} #${l.content_id}`}
@@ -654,6 +663,9 @@
                     class:bg-purple-900={l.content_type === 'article'}
                     class:text-purple-300={l.content_type === 'article'}
                     class:border-purple-700={l.content_type === 'article'}
+                    class:bg-emerald-900={!isLegacyType(l.content_type)}
+                    class:text-emerald-300={!isLegacyType(l.content_type)}
+                    class:border-emerald-700={!isLegacyType(l.content_type)}
                   >
                     {l.content_type}
                   </span>

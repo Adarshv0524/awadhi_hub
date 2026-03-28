@@ -3,20 +3,25 @@ import logging
 from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.db.models import Submission, ModerationLog, User
 from app.core.security import require_role, get_current_user
 from app.core.permissions import Role
-from app.services.content_service import create_canonical_doha_from_submission
+from app.services.content_service import (
+    create_canonical_doha_from_submission,
+    create_canonical_poetry_node_from_submission,
+)
 from app.services.batch_moderation import batch_approve_submissions, BatchValidationError
 
 router = APIRouter(prefix="/moderation", tags=["moderation"])
 
 # ------- Pydantic models -------
 class ModerationSubmissionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     content_type: str
     main_text: str
@@ -31,9 +36,6 @@ class ModerationSubmissionOut(BaseModel):
     assigned_moderator_id: Optional[int]
     priority: int
     version: int
-    class Config:
-        orm_mode = True
-
 class ModerationActionIn(BaseModel):
     note: Optional[str] = None
     guideline_version: Optional[str] = None
@@ -171,6 +173,7 @@ def approve_submission(
     try:
         if sub.content_type == "doha":
             create_canonical_doha_from_submission(db=db, submission=sub, moderator=current_user)
+            create_canonical_poetry_node_from_submission(db=db, submission=sub, moderator_user=current_user)
             logger.info("Created canonical doha for submission %s", sub.id)
         elif sub.content_type == "dictionary":
             from app.services.content_service import create_canonical_dictionary_from_submission
@@ -185,7 +188,14 @@ def approve_submission(
             article_id = create_canonical_article_from_submission(db=db, submission=sub, moderator_user=current_user)
             logger.info("Created article entry id=%s for submission %s", article_id, sub.id)
         else:
-            logger.warning("Unknown content_type '%s' for submission %s - no canonical content created", sub.content_type, sub.id)
+            poetry_node_id = create_canonical_poetry_node_from_submission(db=db, submission=sub, moderator_user=current_user)
+            if poetry_node_id:
+                logger.info("Created poetry node id=%s for submission %s", poetry_node_id, sub.id)
+            else:
+                logger.warning("Unknown content_type '%s' for submission %s - no canonical content created", sub.content_type, sub.id)
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         logger.exception("Failed to create canonical content for submission %s: %s", sub.id, e)
         db.rollback()

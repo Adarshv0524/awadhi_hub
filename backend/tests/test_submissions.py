@@ -379,3 +379,33 @@ def test_regular_user_text_update_still_works_without_metadata(client, db):
     body = updated.json()
     assert body["main_text"] == "updated text"
     assert body["meaning"] == "updated meaning"
+
+
+def test_idiom_update_requires_romanized_text(client, db):
+    user = create_user(db, "s10@example.com", username="s10")
+    token = create_access_token(user.id)
+
+    created = client.post(
+        "/submissions",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "content_type": "idiom",
+            "main_text": "अंधों में काना राजा",
+            "meaning": "Among the blind, the one-eyed man is king",
+            "is_classical": False,
+            "submit_for_review": False,
+        },
+    )
+    assert created.status_code == 200
+    sub = created.json()
+
+    updated = client.put(
+        f"/submissions/{sub['id']}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "meaning": "Updated meaning",
+            "expected_version": sub["version"],
+        },
+    )
+    assert updated.status_code == 422
+    assert "external_references.text_roman" in updated.json()["detail"]

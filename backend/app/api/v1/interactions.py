@@ -52,6 +52,7 @@ class UserInteractionOut(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
     content_title: str
     content_snippet: Optional[str] = None
+    content_path: Optional[str] = None
 
 
 class UserBookmarkOut(UserInteractionOut):

@@ -187,6 +187,68 @@ class DohaEntry(Base):
         uselist=False,
         viewonly=True,
     )
+
+
+class PoetryNode(Base):
+    """Canonical chapter-sequenced poetry nodes across mixed poetry types."""
+
+    __tablename__ = "poetry_nodes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    author_id = Column(Integer, ForeignKey("classical_authors.id"), nullable=False)
+    work_id = Column(Integer, ForeignKey("classical_works.id"), nullable=False)
+    chapter_id = Column(Integer, ForeignKey("work_chapters.id"), nullable=False)
+
+    poetry_type = Column(String(50), nullable=False)
+    sequence_no = Column(Integer, nullable=False)
+
+    main_text = Column(Text, nullable=False)
+    text_devanagari = Column(Text, nullable=True)
+    text_romanized = Column(Text, nullable=True)
+    meaning = Column(Text, nullable=True)
+
+    prosody_metadata = Column(JSON, nullable=True)
+    status = Column(String(20), nullable=False, server_default="active")
+    visibility = Column(String(20), nullable=False, server_default="public")
+
+    source_submission_id = Column(Integer, ForeignKey("submissions.id"), nullable=True, unique=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    verified_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+
+    version = Column(Integer, nullable=False, server_default="1")
+    is_deleted = Column(Boolean, nullable=False, server_default="0")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("chapter_id", "sequence_no", name="uq_poetry_nodes_chapter_sequence"),
+        Index("ix_poetry_nodes_chapter_sequence", "chapter_id", "sequence_no"),
+        Index("ix_poetry_nodes_work_chapter", "work_id", "chapter_id"),
+        Index("ix_poetry_nodes_poetry_type", "poetry_type"),
+    )
+
+    author = relationship("ClassicalAuthor")
+    work = relationship("ClassicalWork")
+    chapter = relationship("WorkChapter")
+
+
+class PoetryTypeRegistry(Base):
+    """Optional registry for supported poetry types and renderer metadata."""
+
+    __tablename__ = "poetry_type_registry"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    poetry_type = Column(String(50), nullable=False, unique=True)
+    display_name = Column(String(120), nullable=False)
+    family = Column(String(60), nullable=True)
+    validation_schema = Column(JSON, nullable=True)
+    default_renderer = Column(String(120), nullable=True)
+    is_user_defined = Column(Boolean, nullable=False, server_default="0")
+    is_active = Column(Boolean, nullable=False, server_default="1")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
 class ContentVersion(Base):
     """Version history for canonical content."""
     __tablename__ = "content_versions"
@@ -319,6 +381,73 @@ class ShareLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     __table_args__ = (
         Index("ix_share_logs_content", "content_type", "content_id"),
+    )
+
+
+class ReputationLevel(Base):
+    """Level definitions for contributor reputation progression."""
+
+    __tablename__ = "reputation_levels"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    slug = Column(String(64), nullable=False, unique=True, index=True)
+    name = Column(String(120), nullable=False)
+    min_points = Column(Integer, nullable=False, server_default="0")
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class BadgeDefinition(Base):
+    """Badge catalog and unlock criteria metadata."""
+
+    __tablename__ = "badge_definitions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    slug = Column(String(64), nullable=False, unique=True, index=True)
+    name = Column(String(120), nullable=False)
+    description = Column(Text, nullable=True)
+    icon = Column(String(120), nullable=True)
+    criteria = Column(JSON, nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default="1")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class UserReputation(Base):
+    """Aggregate user reputation counters and current level."""
+
+    __tablename__ = "user_reputation"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    points = Column(Integer, nullable=False, server_default="0")
+    approved_submissions = Column(Integer, nullable=False, server_default="0")
+    likes_received = Column(Integer, nullable=False, server_default="0")
+    current_level_id = Column(Integer, ForeignKey("reputation_levels.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("User")
+    current_level = relationship("ReputationLevel")
+
+
+class UserBadge(Base):
+    """User-to-badge mapping for earned achievements."""
+
+    __tablename__ = "user_badges"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    badge_definition_id = Column(Integer, ForeignKey("badge_definitions.id"), nullable=False, index=True)
+    earned_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    badge_metadata = Column(JSON, nullable=True)
+
+    user = relationship("User")
+    badge = relationship("BadgeDefinition")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "badge_definition_id", name="uq_user_badges_user_badge"),
     )
 
 class Report(Base):
