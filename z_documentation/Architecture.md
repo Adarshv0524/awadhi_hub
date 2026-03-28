@@ -206,93 +206,85 @@ All support hierarchy linking: `author_id`, `work_id`, `chapter_id`, `number_in_
 
 ## Part 2: Linked-List Sequencing Logic
 
-### 2.1 Verse Navigation: Prev/Current/Next
+### 2.1 Chapter Content Navigation: Prev/Current/Next
 
-**Problem**: Users reading "Ram dut atulit bal..." want to press "Next" to jump directly to "Mahavir vikram bichram dharam..." rather than scrolling or navigating back to the chapter page.
+**Problem**: Users reading chapter-linked content need deterministic next/previous traversal without returning to chapter listings.
 
-**Solution**: Linked-list-style sequencing without explicit prev/next pointers. Instead, **query adjacent entries by (chapter_id, number_in_chapter)**.
+**Solution**: Linked-list-style sequencing without explicit prev/next pointers. The backend uses a generic navigation service that queries adjacent entries by **(chapter_id, number_in_chapter)** with ordered fallbacks.
 
-#### Implementation: `get_doha_navigation()`
+#### Implementation: `get_content_navigation()`
 
 Location: `backend/app/services/content_service.py`
 
 ```python
-def get_doha_navigation(db: Session, doha_id: int) -> DohaNavigationOut:
+def get_content_navigation(db: Session, content_type: str, content_id: int) -> ContentNavigationOut:
     """
-    Return prev/current/next doha cards within the same chapter.
+    Return prev/current/next cards within the same chapter for a supported content type.
     
     Ordering strategy (deterministic, non-shuffling):
     1. Primary: number_in_chapter (handles gapped sequences)
     2. Secondary: created_at (fallback for unordered entries)
     3. Tertiary: id (final tiebreaker)
     """
-    # Get current doha
-    current = db.query(DohaEntry).filter(
-        DohaEntry.id == doha_id,
-        DohaEntry.is_deleted == False,
-        DohaEntry.status == "active",
-    ).first()
+    # Resolve current model by content_type and load active record
+    model_class = _get_model_class(content_type)
+    current = _apply_active_content_filters(
+        db.query(model_class),
+        model_class,
+    ).filter(model_class.id == content_id).first()
     
     if not current:
-        raise HTTPException(404, "Doha not found")
+        raise HTTPException(404, "Content not found")
 
     # Find previous: largest number_in_chapter < current.number_in_chapter
     if current.number_in_chapter is not None:
-        previous = (db.query(DohaEntry)
+        previous = (_apply_active_content_filters(db.query(model_class), model_class)
             .filter(
-                DohaEntry.chapter_id == current.chapter_id,
-                DohaEntry.number_in_chapter < current.number_in_chapter,
-                DohaEntry.is_deleted == False,
-                DohaEntry.status == "active",
+                model_class.chapter_id == current.chapter_id,
+                model_class.number_in_chapter < current.number_in_chapter,
             )
             .order_by(
-                DohaEntry.number_in_chapter.desc(),  # largest first
-                DohaEntry.created_at.desc(),
-                DohaEntry.id.desc()
+                model_class.number_in_chapter.desc(),
+                model_class.created_at.desc(),
+                model_class.id.desc(),
             )
             .first()
         )
     
     # Find next: smallest number_in_chapter > current.number_in_chapter
     if current.number_in_chapter is not None:
-        next_item = (db.query(DohaEntry)
+        next_item = (_apply_active_content_filters(db.query(model_class), model_class)
             .filter(
-                DohaEntry.chapter_id == current.chapter_id,
-                DohaEntry.number_in_chapter > current.number_in_chapter,
-                DohaEntry.is_deleted == False,
-                DohaEntry.status == "active",
+                model_class.chapter_id == current.chapter_id,
+                model_class.number_in_chapter > current.number_in_chapter,
             )
             .order_by(
-                DohaEntry.number_in_chapter.asc(),   # smallest first
-                DohaEntry.created_at.asc(),
-                DohaEntry.id.asc()
+                model_class.number_in_chapter.asc(),
+                model_class.created_at.asc(),
+                model_class.id.asc(),
             )
             .first()
         )
     else:
         # Fallback: use created_at for unordered entries
-        previous = (db.query(DohaEntry)
+        previous = (_apply_active_content_filters(db.query(model_class), model_class)
             .filter(
-                DohaEntry.chapter_id == current.chapter_id,
-                DohaEntry.created_at < current.created_at,
-                DohaEntry.is_deleted == False,
-                DohaEntry.status == "active",
+                model_class.chapter_id == current.chapter_id,
+                model_class.created_at < current.created_at,
             )
-            .order_by(DohaEntry.created_at.desc(), DohaEntry.id.desc())
+            .order_by(model_class.created_at.desc(), model_class.id.desc())
             .first()
         )
-        next_item = (db.query(DohaEntry)
+        next_item = (_apply_active_content_filters(db.query(model_class), model_class)
             .filter(
-                DohaEntry.chapter_id == current.chapter_id,
-                DohaEntry.created_at > current.created_at,
-                DohaEntry.is_deleted == False,
-                DohaEntry.status == "active",
+                model_class.chapter_id == current.chapter_id,
+                model_class.created_at > current.created_at,
             )
-            .order_by(DohaEntry.created_at.asc(), DohaEntry.id.asc())
+            .order_by(model_class.created_at.asc(), model_class.id.asc())
             .first()
         )
     
-    return DohaNavigationOut(
+    return ContentNavigationOut(
         previous=_to_card(previous) if previous else None,
         current=_to_card(current),
         next=_to_card(next_item) if next_item else None,
@@ -302,38 +294,54 @@ def get_doha_navigation(db: Session, doha_id: int) -> DohaNavigationOut:
 #### Response Schema
 
 ```python
-class DohaNavCard(BaseModel):
+class ContentNavCard(BaseModel):
     id: int
     number_in_chapter: Optional[int]
+    content_type: Optional[str] = None
     title: Optional[str] = None
-    short_text: str  # first 100 chars of main_text
+    short_text: str
 
-class DohaNavigationOut(BaseModel):
-    previous: Optional[DohaNavCard] = None
-    current: DohaNavCard
-    next: Optional[DohaNavCard] = None
+class ContentNavigationOut(BaseModel):
+    previous: Optional[ContentNavCard] = None
+    current: ContentNavCard
+    next: Optional[ContentNavCard] = None
 ```
 
 #### Endpoint
 
 ```python
-@router.get("/doha/{doha_id}/navigation", response_model=DohaNavigationOut)
+@router.get("/doha/{doha_id}/navigation", response_model=ContentNavigationOut)
 def get_doha_navigation_endpoint(doha_id: int, db: Session = Depends(get_db)):
-    """Return prev/current/next doha cards based on chapter sequence."""
-    return get_doha_navigation(db, doha_id)
+    return get_content_navigation(db, content_type="doha", content_id=doha_id)
+
+@router.get("/dictionary/{entry_id}/navigation", response_model=ContentNavigationOut)
+def get_dictionary_navigation_endpoint(entry_id: int, db: Session = Depends(get_db)):
+    return get_content_navigation(db, content_type="dictionary", content_id=entry_id)
+
+@router.get("/idiom/{entry_id}/navigation", response_model=ContentNavigationOut)
+def get_idiom_navigation_endpoint(entry_id: int, db: Session = Depends(get_db)):
+    return get_content_navigation(db, content_type="idiom", content_id=entry_id)
+
+@router.get("/article/{entry_id}/navigation", response_model=ContentNavigationOut)
+def get_article_navigation_endpoint(entry_id: int, db: Session = Depends(get_db)):
+    return get_content_navigation(db, content_type="article", content_id=entry_id)
 ```
 
 #### Frontend Integration
 
-File: `frontend/src/pages/doha/[id].astro`
+Files:
+- `frontend/src/pages/doha/[id].astro`
+- `frontend/src/pages/dictionary/[id].astro`
+- `frontend/src/pages/idioms/[id].astro`
+- `frontend/src/pages/articles/[id].astro`
 
 ```astro
 let navigation = null;
 
 try {
-  navigation = await api(`/content/doha/${id}/navigation`);
+    navigation = await api(`/content/dictionary/${id}/navigation`);
 } catch (navErr) {
-  console.warn("[Doha] Navigation fetch failed:", navErr);
+    console.warn("[Detail] Navigation fetch failed:", navErr);
 }
 ```
 
@@ -343,6 +351,10 @@ Then rendered via:
 <NavigationControls 
   previousId={navigation?.previous?.id}
   nextId={navigation?.next?.id}
+    previousContentType={navigation?.previous?.content_type}
+    nextContentType={navigation?.next?.content_type}
+    previousKind="Definition"
+    nextKind="Definition"
   previousText={navigation?.previous?.short_text}
   nextText={navigation?.next?.short_text}
 />
@@ -351,7 +363,7 @@ Then rendered via:
 #### Handling Edge Cases
 
 1. **No Previous/Next**: Buttons disabled, visually grayed out (CSS class `opacity-50`)
-2. **Gapped Numbering**: If chapter has verses [1, 3, 5, 10], queries find nearest ordered neighbor
+2. **Gapped Numbering**: If chapter has sparse numbering [1, 3, 5, 10], queries find nearest ordered neighbor
 3. **Unordered Content**: Fallback to created_at ensures deterministic sequencing even without number_in_chapter
 4. **Deleted/Inactive**: Filter excludes is_deleted=True, status != "active"
 
@@ -359,7 +371,7 @@ Then rendered via:
 
 - Index on `(chapter_id, number_in_chapter)` added in migration 0015
 - Two-query pattern (one per direction) is acceptable for <100 items per chapter
-- For very large chapters (1000+ verses), consider pagination-based navigation
+- For very large chapters (1000+ entries), consider pagination-based navigation
 
 ---
 
@@ -547,6 +559,65 @@ Default handling contract:
 - Integer metrics default to `0`
 - `weight_score` defaults to `0.0`
 
+### 3.2 Interaction System API Parity (Likes + Bookmarks)
+
+Both likes and bookmarks now have bi-directional API support for create/read/delete semantics.
+
+Implemented endpoints:
+- `POST /interactions/toggle`:
+    - Create: toggling a missing interaction creates an active row.
+    - Delete: toggling an active interaction marks it inactive (`is_active = false`) and removes it from list views.
+- `GET /interactions/users/{user_id}/bookmarks`:
+    - Paginated user bookmark retrieval with content previews.
+- `GET /interactions/users/{user_id}/likes`:
+    - Paginated user like retrieval with content previews.
+
+Access control:
+- Retrieval endpoints are owner-or-admin only.
+
+Dashboard parity:
+- User dashboard renders both Bookmarks and Likes tabs from dedicated APIs with pagination (`offset`/`limit`) and active-only filtering.
+
+Integrity guarantee:
+- Un-liking content sets `is_active = false` and it no longer appears in dashboard likes lists.
+
+### 3.3 User & Social System: Public Stats Aggregation
+
+Public profile analytics are exposed through:
+
+- `GET /users/{username}/stats`
+
+Response contract (`UserStatsOut`):
+
+```python
+class UserStatsOut(BaseModel):
+     username: str
+     contributions_count: int
+     likes_received: int
+     most_liked_content_id: Optional[int]
+     average_engagement_score: float
+     joined_date: datetime
+```
+
+Aggregation rules:
+
+1. `contributions_count`:
+    - Count `submissions` where `contributor_id` matches the user, `status == "approved"`, and `is_deleted == False`.
+2. `likes_received`:
+    - Build a polymorphic union of canonical content rows (`doha`, `dictionary`, `idiom`, `article`) linked through `source_submission_id` to this contributor's approved/public submissions.
+    - Left join `engagement_kpis` on `(content_type, content_id)` and compute `SUM(likes_count)`.
+3. `average_engagement_score`:
+    - On the same KPI join, compute `AVG(weight_score)` and default to `0.0` if empty.
+4. `most_liked_content_id`:
+    - Order joined rows by `likes_count DESC`, then `content_id ASC`; return the top `content_id`, else `null`.
+
+Privacy contract:
+
+- Endpoint is public (no auth required) for profile visibility.
+- No private identity fields are returned (email, password hash, tokens, moderation data).
+- Draft/rejected/deleted submissions are excluded from contribution counts.
+- KPI rollups for public profiles are computed from approved/public canonical contributions.
+
 ---
 
 ## Part 4: Schematic Improvements & Data Integrity
@@ -637,6 +708,22 @@ class User(Base):
 | **moderator** | Review submissions, approve/reject, comment |
 | **admin** | Manage hierarchy, manage users, bulk operations |
 
+### 5.2 Moderator Inline Metadata Editing (LOGICAL-001 Resolved)
+
+The submission update flow now supports moderator/admin inline correction of hierarchy metadata without forcing contributor rejection loops.
+
+Implemented in `backend/app/api/v1/submissions.py`:
+- `SubmissionUpdateIn` includes `author_slug`, `work_slug`, `chapter_slug`, `number_in_chapter`, and `is_classical`.
+- Metadata writes are role-gated: only moderator/admin can edit hierarchy fields.
+- Contributor edits remain limited to allowed statuses (`draft`, `rejected`) and non-metadata fields.
+- Hierarchy references are revalidated against `ClassicalAuthor`, `ClassicalWork`, and `WorkChapter` before commit.
+- Update endpoint returns detailed payload (`SubmissionDetailOut`) including timestamps for moderation UI refresh.
+
+Verified behavior:
+- Moderator can update `number_in_chapter`/slugs for pending submissions.
+- Regular users receive 403 when attempting hierarchy metadata edits.
+- Regular text-only edits continue to work for eligible contributor-owned submissions.
+
 ---
 
 ## Part 6: Integration Points & Future Extensibility
@@ -667,7 +754,7 @@ class User(Base):
 4. **Create frontend page** (ASTRO)
    ```astro
    // /chaupai/[id].astro
-   import NavigationControls from "../components/content/NavigationControls.svelte";
+    import NavigationControls from "../components/navigation/NavigationControls.svelte";
    ```
 
 5. **Extend EngagementKPI** (optional, already supports via content_type)
@@ -676,16 +763,56 @@ class User(Base):
 
 `NavigationControls.svelte` is a universal frontend component intended for all content detail pages (`doha`, `dictionary`, `idiom`, `article`).
 
-Current behavior:
-- Fully active for Doha pages where navigation payloads are available.
-- Conditionally mounted on Dictionary/Idiom/Article pages, but remains dormant until navigation payloads are returned by API.
+Frontend Component Library classification:
+- **Global Content Component**: `frontend/src/components/navigation/NavigationControls.svelte`
+- Purpose: Consistent previous/next navigation UX across all chapter-linked content detail routes.
+- UX contract: Type-aware route resolution plus contextual labels such as "Next Definition" and "Next Article".
 
-Dependency:
-- Full non-Doha activation depends on [LOGICAL-003] (navigation API coverage for Dictionary/Idiom/Article).
+Current behavior:
+- Active for all content detail pages that can resolve chapter-linked navigation payloads.
+- For content records without hierarchy linkage (for example article rows without `chapter_id`), navigation endpoints intentionally return not found and UI should keep controls hidden.
 
 Component contract:
 - Supports `previousId`/`nextId` and optional `previousHref`/`nextHref` for type-agnostic routing.
 - Parent pages should render only when previous/next navigation targets are present.
+
+### 6.3 Future Scalability & Optimizations
+
+This section archives low-priority optimization ideas that are currently not justified by observed latency.
+
+#### [OPTIMIZATION-001] Chapter Page Fallbacks
+
+Archived assessment:
+- Current chapter route `frontend/src/pages/[author]/[work]/[chapter].astro` already uses `GET /content/by-path/{author}/{work}/{chapter}/dohas`.
+- Chapter fetch path is stable in runtime checks and remains under 100ms in local profiling.
+- The previously proposed `GET /content/by-path-bulk/{author}/{work}/{chapter}` endpoint would duplicate existing behavior without measurable gain at current load.
+
+Measured baseline (local, 5 runs):
+- `GET /content/by-path/tulsidas/ramcharitmanas/baal-kaand/dohas?offset=0&limit=100`: ~5-6ms median
+
+Decision:
+- **Archive for Future**.
+- Reconsider only when chapter traffic or chapter size trends make hierarchy resolution a confirmed bottleneck.
+
+#### [OPTIMIZATION-002] Eager Loading Navigation
+
+Archived assessment:
+- Current Doha detail page uses two calls:
+    1. `GET /content/doha/{id}`
+    2. `GET /content/doha/{id}/navigation`
+- This separation keeps list payloads lean and avoids adding navigation objects to non-detail responses.
+- A detail-only schema (`DohaDetailOut` extends `DohaOut` with optional `navigation`) remains the preferred future design if/when a single-round-trip path is needed.
+
+Measured baseline (local, 5 runs):
+- `GET /content/doha/4`: ~3-4ms median
+- `GET /content/doha/4/navigation`: ~4-6ms median
+
+Decision:
+- **Archive for Future**.
+- Implement only when end-to-end page metrics show navigation call overhead is material in production latency budgets.
+
+Operational note:
+- If implemented later, use `DohaDetailOut` only on detail endpoints so `GET /content/doha` list/search payloads remain compact.
 
 ---
 

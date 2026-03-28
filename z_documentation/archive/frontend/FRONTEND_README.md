@@ -44,3 +44,16 @@ All commands are run from the root of the project, from a terminal:
 ## 👀 Want to learn more?
 
 Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+
+## Environment Variables
+
+Create a local `.env` file from `.env.example` and configure these values:
+
+- `PUBLIC_API_BASE`: Backend base URL, for example `http://localhost:8000`
+- `PUBLIC_FRONTEND_BASE_URL`: Frontend base URL, for example `http://localhost:4321`
+- `PUBLIC_GOOGLE_CLIENT_ID`: Google OAuth client id for frontend OAuth URL construction
+
+Security note:
+- Do not commit secrets to git.
+- Public variables prefixed with `PUBLIC_` are exposed to browser code.
+- Keep server-side secrets (like OAuth client secret) only in backend environment configuration.

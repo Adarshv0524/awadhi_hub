@@ -9,7 +9,7 @@ import CopyButton from "../../components/content/CopyButton.svelte";
 import StructuredData from "../../components/StructuredData.astro";
 import TrustSignals from "../../components/content/TrustSignals.svelte";
 import ModerationInfo from "../../components/content/ModerationInfo.svelte";
-import NavigationControls from "../../components/content/NavigationControls.svelte";
+import NavigationControls from "../../components/navigation/NavigationControls.svelte";
 
 const { id } = Astro.params;
 
@@ -19,7 +19,12 @@ let navigation: any = null;
 
 try {
   idiom = await api(`/idioms/${id}`);
-  navigation = idiom?.navigation ?? null;
+  try {
+    navigation = await api(`/content/idiom/${id}/navigation`);
+  } catch (navErr) {
+    navigation = null;
+    if (import.meta.env.DEV) console.warn("[Idiom Detail] Navigation fetch failed:", navErr);
+  }
 } catch (e) {
   if (e instanceof ApiError && e.status === 404) {
     return Astro.redirect("/404");
@@ -89,6 +94,10 @@ const idiomUrl = `${baseUrl}/idioms/${id}`;
               nextId={navigation.next?.id}
               previousHref={navigation.previous?.href}
               nextHref={navigation.next?.href}
+              previousContentType={navigation.previous?.content_type ?? "idiom"}
+              nextContentType={navigation.next?.content_type ?? "idiom"}
+              previousKind="Idiom"
+              nextKind="Idiom"
               previousText={navigation.previous?.short_text}
               nextText={navigation.next?.short_text}
             />

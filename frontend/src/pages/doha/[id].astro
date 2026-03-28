@@ -11,7 +11,7 @@ import StructuredData from "../../components/StructuredData.astro";
 import TrustSignals from "../../components/content/TrustSignals.svelte";
 import ModerationInfo from "../../components/content/ModerationInfo.svelte";
 import Breadcrumbs from "../../components/content/Breadcrumbs.svelte";
-import NavigationControls from "../../components/content/NavigationControls.svelte";
+import NavigationControls from "../../components/navigation/NavigationControls.svelte";
 import { formatHierarchyPath } from "../../lib/hierarchyParser";
 
 const { id } = Astro.params;
@@ -105,6 +105,10 @@ const workDisplay = doha.work_name || (doha.work_id ? `Work #${doha.work_id}` : 
         client:load
         previousId={navigation.previous?.id}
         nextId={navigation.next?.id}
+        previousContentType={navigation.previous?.content_type ?? "doha"}
+        nextContentType={navigation.next?.content_type ?? "doha"}
+        previousKind="Verse"
+        nextKind="Verse"
         previousText={navigation.previous?.short_text}
         nextText={navigation.next?.short_text}
       />
@@ -174,7 +178,9 @@ const workDisplay = doha.work_name || (doha.work_id ? `Work #${doha.work_id}` : 
           client:only="svelte"
           contentType="doha"
           contentId={doha.id}
+          content={doha}
           likes={safeEngagement.likes_count}
+          views={safeEngagement.views_count}
           bookmarks={safeEngagement.bookmarks_count}
           shares={safeEngagement.shares_count}
         />
