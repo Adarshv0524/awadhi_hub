@@ -46,11 +46,8 @@ const baseUrl = import.meta.env.SITE || "https://awadhi.new";
 const entryUrl = `${baseUrl}/dictionary/${id}`;
 ---
 
-<BaseLayout title={title}>
+<BaseLayout title={title} description={description} canonicalURL={entryUrl}>
   <head>
-    <link rel="canonical" href={entryUrl} />
-    <meta name="description" content={description} />
-    
     <!-- Structured Data for Dictionary Entry -->
     <StructuredData 
       type="DefinedTerm" 

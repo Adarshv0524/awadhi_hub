@@ -6,18 +6,24 @@ import ErrorBoundary from "../components/ErrorBoundary.svelte";
 
 const { 
   title: pageTitle, 
-  description = "Awadhi New - A digital repository for Awadhi language literature, dohas, idioms, and cultural heritage.",
+  description: pageDescription,
+  canonicalURL,
   image = "/og-image.png",
   noindex = false 
 } = Astro.props;
 
 const title = pageTitle ?? "Awadhi New";
+const description =
+  pageDescription ??
+  "Awadhi New - A digital repository for Awadhi language literature, dohas, idioms, and cultural heritage.";
 
 // Generate canonical URL
 const baseUrl = import.meta.env.SITE || "https://awadhi.new";
-const canonical = Astro.url?.pathname 
-  ? `${baseUrl}${Astro.url.pathname}`.replace(/\/+$/, '') // Remove trailing slash
-  : undefined;
+const canonical =
+  canonicalURL ??
+  (Astro.url?.pathname
+    ? `${baseUrl}${Astro.url.pathname}`.replace(/\/+$/, "")
+    : undefined);
 
 // OpenGraph URL
 const ogUrl = canonical || baseUrl;

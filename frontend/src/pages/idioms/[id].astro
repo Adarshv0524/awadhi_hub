@@ -43,11 +43,8 @@ const baseUrl = import.meta.env.SITE || "https://awadhi.new";
 const idiomUrl = `${baseUrl}/idioms/${id}`;
 ---
 
-<BaseLayout title={title}>
+<BaseLayout title={title} description={description} canonicalURL={idiomUrl}>
   <head>
-    <link rel="canonical" href={idiomUrl} />
-    <meta name="description" content={description} />
-    
     <!-- Structured Data for Idiom (Creative Work) -->
     <StructuredData 
       type="CreativeWork" 

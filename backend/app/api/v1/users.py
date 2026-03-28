@@ -1,16 +1,17 @@
 # app/api/v1/users.py
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from datetime import datetime
+from pydantic import BaseModel, Field
 from typing import Optional
-from sqlalchemy.orm import Session, aliased
-from sqlalchemy import select, func
+from sqlalchemy.orm import Session
+from sqlalchemy import select, func, literal, cast, Float
 
 from app.db.session import get_db
 from app.db.models import (
     User,
     Submission,
-    UserInteraction,
+    EngagementKPI,
     DohaEntry,
     DictionaryEntry,
     IdiomEntry,
@@ -29,11 +30,25 @@ class PublicUserOut(BaseModel):
         orm_mode = True
 
 
-class UserPublicStatsOut(BaseModel):
-    public_submissions: int
-    approved_count: int
-    likes_received: int
-    bookmarks_received: int
+class UserStatsOut(BaseModel):
+    username: str = Field(..., description="Public username for the profile.")
+    contributions_count: int = Field(
+        ...,
+        description="Total approved public canonical contributions authored by this user.",
+    )
+    likes_received: int = Field(
+        ...,
+        description="Total likes received on approved public contributions.",
+    )
+    most_liked_content_id: Optional[int] = Field(
+        None,
+        description="Content ID of the user's most-liked approved public contribution.",
+    )
+    average_engagement_score: float = Field(
+        ...,
+        description="Average engagement score across approved public contributions.",
+    )
+    joined_date: datetime = Field(..., description="Account creation timestamp.")
 
 
 @router.get("/{username}", response_model=PublicUserOut)
@@ -44,76 +59,109 @@ def get_public_user(username: str, db: Session = Depends(get_db)):
     return user
 
 
-def _interaction_count_subquery_for_content(
-    interaction_type: str,
-    content_model,
-    content_type: str,
-):
-    sub = aliased(Submission)
-    return (
-        select(func.count(UserInteraction.id))
-        .select_from(UserInteraction)
-        .join(content_model, content_model.id == UserInteraction.content_id)
-        .join(sub, sub.id == content_model.source_submission_id)
-        .where(
-            UserInteraction.interaction_type == interaction_type,
-            UserInteraction.is_active == True,
-            UserInteraction.content_type == content_type,
-            sub.contributor_id == User.id,
-            sub.status == "approved",
-            sub.visibility == "public",
-            sub.is_deleted == False,
-        )
-        .scalar_subquery()
-    )
-
-
-@router.get("/{username}/stats", response_model=UserPublicStatsOut)
-def get_user_stats(username: str, db: Session = Depends(get_db)):
-    sub_public = aliased(Submission)
-    public_submissions_sq = (
-        select(func.count(sub_public.id))
-        .where(
-            sub_public.contributor_id == User.id,
-            sub_public.status == "approved",
-            sub_public.visibility == "public",
-            sub_public.is_deleted == False,
-        )
-        .scalar_subquery()
-    )
-
-    # Public profile aggregates should only include approved + public contributions.
-    approved_count_sq = public_submissions_sq
-
-    likes_received_sq = (
-        _interaction_count_subquery_for_content("like", DohaEntry, "doha")
-        + _interaction_count_subquery_for_content("like", DictionaryEntry, "dictionary")
-        + _interaction_count_subquery_for_content("like", IdiomEntry, "idiom")
-        + _interaction_count_subquery_for_content("like", ArticleEntry, "article")
-    )
-    bookmarks_received_sq = (
-        _interaction_count_subquery_for_content("bookmark", DohaEntry, "doha")
-        + _interaction_count_subquery_for_content("bookmark", DictionaryEntry, "dictionary")
-        + _interaction_count_subquery_for_content("bookmark", IdiomEntry, "idiom")
-        + _interaction_count_subquery_for_content("bookmark", ArticleEntry, "article")
-    )
-
-    row = db.execute(
+def _contribution_content_union_for_user(user_id: int):
+    doha_q = (
         select(
-            User.id.label("user_id"),
-            public_submissions_sq.label("public_submissions"),
-            approved_count_sq.label("approved_count"),
-            likes_received_sq.label("likes_received"),
-            bookmarks_received_sq.label("bookmarks_received"),
-        ).where(User.username == username)
-    ).first()
+            literal("doha").label("content_type"),
+            DohaEntry.id.label("content_id"),
+        )
+        .join(Submission, Submission.id == DohaEntry.source_submission_id)
+        .where(
+            Submission.contributor_id == user_id,
+            Submission.status == "approved",
+            Submission.visibility == "public",
+            Submission.is_deleted == False,
+            DohaEntry.visibility == "public",
+            DohaEntry.status == "active",
+            DohaEntry.is_canonical == True,
+            DohaEntry.is_deleted == False,
+        )
+    )
+    dictionary_q = (
+        select(
+            literal("dictionary").label("content_type"),
+            DictionaryEntry.id.label("content_id"),
+        )
+        .join(Submission, Submission.id == DictionaryEntry.source_submission_id)
+        .where(
+            Submission.contributor_id == user_id,
+            Submission.status == "approved",
+            Submission.visibility == "public",
+            Submission.is_deleted == False,
+            DictionaryEntry.visibility == "public",
+        )
+    )
+    idiom_q = (
+        select(
+            literal("idiom").label("content_type"),
+            IdiomEntry.id.label("content_id"),
+        )
+        .join(Submission, Submission.id == IdiomEntry.source_submission_id)
+        .where(
+            Submission.contributor_id == user_id,
+            Submission.status == "approved",
+            Submission.visibility == "public",
+            Submission.is_deleted == False,
+            IdiomEntry.visibility == "public",
+        )
+    )
+    article_q = (
+        select(
+            literal("article").label("content_type"),
+            ArticleEntry.id.label("content_id"),
+        )
+        .join(Submission, Submission.id == ArticleEntry.source_submission_id)
+        .where(
+            Submission.contributor_id == user_id,
+            Submission.status == "approved",
+            Submission.visibility == "public",
+            Submission.is_deleted == False,
+            ArticleEntry.visibility == "public",
+        )
+    )
+    return doha_q.union_all(dictionary_q, idiom_q, article_q).subquery("contrib_content")
 
-    if not row:
+
+@router.get("/{username}/stats", response_model=UserStatsOut)
+def get_user_stats(username: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return UserPublicStatsOut(
-        public_submissions=int(row.public_submissions or 0),
-        approved_count=int(row.approved_count or 0),
-        likes_received=int(row.likes_received or 0),
-        bookmarks_received=int(row.bookmarks_received or 0),
+    contrib_content = _contribution_content_union_for_user(user.id)
+
+    contributions_count = db.execute(
+        select(func.count()).select_from(contrib_content)
+    ).scalar_one()
+    kpi_join = contrib_content.outerjoin(
+        EngagementKPI,
+        (EngagementKPI.content_type == contrib_content.c.content_type)
+        & (EngagementKPI.content_id == contrib_content.c.content_id),
+    )
+
+    likes_received = db.execute(
+        select(func.coalesce(func.sum(EngagementKPI.likes_count), 0)).select_from(kpi_join)
+    ).scalar_one()
+
+    average_engagement_score = db.execute(
+        select(func.coalesce(cast(func.avg(EngagementKPI.weight_score), Float), 0.0)).select_from(kpi_join)
+    ).scalar_one()
+
+    most_liked_content_id = db.execute(
+        select(
+            contrib_content.c.content_id,
+            func.coalesce(EngagementKPI.likes_count, 0).label("likes_count"),
+        )
+        .select_from(kpi_join)
+        .order_by(func.coalesce(EngagementKPI.likes_count, 0).desc(), contrib_content.c.content_id.asc())
+        .limit(1)
+    ).first()
+
+    return UserStatsOut(
+        username=user.username or username,
+        contributions_count=int(contributions_count or 0),
+        likes_received=int(likes_received or 0),
+        most_liked_content_id=int(most_liked_content_id.content_id) if most_liked_content_id else None,
+        average_engagement_score=float(average_engagement_score or 0.0),
+        joined_date=user.created_at,
     )

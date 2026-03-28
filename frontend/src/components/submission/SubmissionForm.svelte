@@ -25,6 +25,11 @@
   let lemma_roman = "";
   
   // Idiom-specific
+  // Technical note (MED-003): Idiom submission contract is now aligned end-to-end.
+  // Frontend captures Romanized text and passes it in external_references.text_roman.
+  // Moderation canonicalization maps this into idiom_entries.text_roman during approval.
+  // See Architecture.md Section 3.4 "Submission and Moderation Alignment" for details.
+  let idiom_text_roman = "";
   let usage_example = "";
   
   // Article-specific
@@ -66,6 +71,7 @@
       lemma_devanagari,
       lemma_roman,
       usage_example,
+      idiom_text_roman,
       title,
       content,
       excerpt,
@@ -87,6 +93,7 @@
       lemma_devanagari.trim() !== "" ||
       lemma_roman.trim() !== "" ||
       usage_example.trim() !== "" ||
+      idiom_text_roman.trim() !== "" ||
       title.trim() !== "" ||
       content.trim() !== "" ||
       excerpt.trim() !== ""
@@ -105,6 +112,7 @@
         lemma_devanagari,
         lemma_roman,
         usage_example,
+        idiom_text_roman,
         title,
         content,
         excerpt,
@@ -149,6 +157,7 @@
       lemma_devanagari = data.lemma_devanagari || "";
       lemma_roman = data.lemma_roman || "";
       usage_example = data.usage_example || "";
+      idiom_text_roman = data.idiom_text_roman || "";
       title = data.title || "";
       content = data.content || "";
       excerpt = data.excerpt || "";
@@ -191,6 +200,7 @@
   }
   
   function buildPayload(submitForReview: boolean, timeSpent?: number) {
+    const parsedExternalReferences = external_refs ? JSON.parse(external_refs) : {};
     const payload: any = {
       content_type,
       submit_for_review: submitForReview,
@@ -212,6 +222,13 @@
       payload.main_text = main_text || null;
       payload.meaning = meaning || null;
       payload.usage_example = usage_example || null;
+      payload.external_references = {
+        ...parsedExternalReferences,
+        text_devanagari: main_text || null,
+        text_roman: idiom_text_roman || null,
+        meaning: meaning || null,
+        examples: usage_example ? [usage_example] : null,
+      };
     } else if (content_type === "article") {
       payload.title = title || null;
       payload.main_text = content || null;
@@ -227,7 +244,9 @@
     payload.work_slug = selected_work_slug || null;
     payload.chapter_slug = selected_chapter_slug || null;
     payload.number_in_chapter = number_in_chapter || null;
-    payload.external_references = external_refs ? JSON.parse(external_refs) : null;
+    if (content_type !== "idiom") {
+      payload.external_references = Object.keys(parsedExternalReferences).length ? parsedExternalReferences : null;
+    }
     
     // Clean up null values
     Object.keys(payload).forEach(k => payload[k] == null && delete payload[k]);
@@ -320,7 +339,7 @@
   });
   
   function handleBeforeUnload(e: BeforeUnloadEvent) {
-    if (hasUnsavedChanges && autosaveStatus !== "saving") {
+    if (hasUnsavedChanges && saveStatus !== "saving") {
       e.preventDefault();
       e.returnValue = "You have unsaved changes. Are you sure you want to leave?";
       return e.returnValue;
@@ -339,6 +358,7 @@
     if (content_type === "dictionary") {
       main_text = "";
       usage_example = "";
+      idiom_text_roman = "";
       title = "";
       content = "";
       excerpt = "";
@@ -353,10 +373,12 @@
       lemma_roman = "";
       main_text = "";
       usage_example = "";
+      idiom_text_roman = "";
     } else if (content_type === "doha") {
       lemma_devanagari = "";
       lemma_roman = "";
       usage_example = "";
+      idiom_text_roman = "";
       title = "";
       content = "";
       excerpt = "";
@@ -451,6 +473,7 @@
     lemma_devanagari = "";
     lemma_roman = "";
     usage_example = "";
+    idiom_text_roman = "";
     title = "";
     content = "";
     excerpt = "";
@@ -694,18 +717,6 @@
     </div>
     
   {:else if content_type === "idiom"}
-    <!-- 
-      ⚠️ BACKEND TODO: Idiom approval is currently broken!
-      Backend error: "IdiomPayload text_roman - Input should be a valid string [type=string_type, input_value=None]"
-      
-      REQUIRED FIX in backend/app/services/content_service.py:
-      - The create_canonical_idiom_from_submission function needs to handle missing text_roman field
-      - Either make text_roman optional in IdiomPayload schema, OR
-      - Auto-generate text_roman from main_text if not provided, OR
-      - Extract text_roman from submission.content_json
-      
-      Until fixed, idiom submissions cannot be approved by moderators (500 error on approval).
-    -->
     <div class="field">
       <label for="main-text">Idiom/Proverb Text <span style="color:#ef4444">*</span></label>
       <input 
@@ -715,6 +726,18 @@
         on:input={handleInput}
         required
         placeholder="Enter the idiom or proverb..."
+      />
+    </div>
+
+    <div class="field">
+      <label for="idiom-text-roman">Romanized Text <span style="color:#ef4444">*</span></label>
+      <input
+        id="idiom-text-roman"
+        type="text"
+        bind:value={idiom_text_roman}
+        on:input={handleInput}
+        required
+        placeholder="e.g., andhon mein kana raja"
       />
     </div>
 

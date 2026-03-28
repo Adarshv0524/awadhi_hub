@@ -1,5 +1,7 @@
 # app/api/v1/interactions.py
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
@@ -41,6 +43,37 @@ class ReportIn(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 
+class UserInteractionOut(BaseModel):
+    id: int
+    content_type: str
+    content_id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    metadata: Optional[Dict[str, Any]] = None
+    content_title: str
+    content_snippet: Optional[str] = None
+
+
+class UserBookmarkOut(UserInteractionOut):
+    pass
+
+
+class UserLikeOut(UserInteractionOut):
+    pass
+
+
+class UserBookmarksListOut(BaseModel):
+    total_count: int
+    count: int
+    results: List[UserBookmarkOut]
+
+
+class UserLikesListOut(BaseModel):
+    total_count: int
+    count: int
+    results: List[UserLikeOut]
+
+
 @router.post("/toggle")
 def api_toggle_interaction(payload: ToggleIn, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
     if payload.interaction not in ("like", "bookmark"):
@@ -66,23 +99,23 @@ def _ensure_owner_or_admin(current_user, user_id: int):
         raise HTTPException(status_code=403, detail="Not allowed")
 
 
-@router.get("/users/{user_id}/bookmarks")
+@router.get("/users/{user_id}/bookmarks", response_model=UserBookmarksListOut)
 def api_list_user_bookmarks(user_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200)):
     _ensure_owner_or_admin(current_user, user_id)
     res = list_user_bookmarks(db=db, user_id=user_id, limit=limit, offset=offset)
     return {
         "total_count": res["total_count"],
-        "count": res["total_count"],
+        "count": len(res["results"]),
         "results": res["results"],
     }
 
 
-@router.get("/users/{user_id}/likes")
+@router.get("/users/{user_id}/likes", response_model=UserLikesListOut)
 def api_list_user_likes(user_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user), offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200)):
     _ensure_owner_or_admin(current_user, user_id)
     res = list_user_likes(db=db, user_id=user_id, limit=limit, offset=offset)
     return {
         "total_count": res["total_count"],
-        "count": res["total_count"],
+        "count": len(res["results"]),
         "results": res["results"],
     }

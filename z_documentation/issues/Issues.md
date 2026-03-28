@@ -1,72 +1,31 @@
-# Issues Log: Categorized by Type
+# Issues Log: Complete Re-Audit (March 28, 2026)
 
-**Document Purpose**: GitHub-style issue tracking for bugs, feature gaps, and architectural improvements  
-**Last Audit**: March 26, 2026  
-**Format**: Severity + Type + Reproducible Status + Mitigation Status  
+Document purpose: current unresolved issues after full re-audit of backend, frontend, runtime checks, and documentation consistency.
 
----
+Audit focus:
+- Consistency
+- Optimization
+- SEO
+- UI/UX and accessibility
 
-## Legend
-
-### Severity Levels
-- **CRITICAL**: Blocks core functionality; causes 500 errors or data loss
-- **HIGH**: Impacts user experience or feature completeness; 400/403/404 responses
-- **MEDIUM**: Workaround exists; affects polish or non-critical features
-- **LOW**: Nice-to-have optimizations; accepts minor inefficiency
-
-### Issue Types
-1. **WIRING** – Backend-Frontend contract mismatch (missing data, schema gaps)
-2. **STYLING** – UI/UX presentation (visual feedback, layout, responsive issues)
-3. **DATA STRUCTURE** – Schema/model alignment, drift, or design debt
-4. **OPTIMIZATION** – Query performance, caching, N+1, unnecessary round-trips
-5. **LOGICAL FLOW** – Feature completeness, workflow gaps, missing endpoints
-
-### Resolution Status
-- 🔴 **NOT STARTED**
-- 🟡 **IN PROGRESS**
-- 🟢 **RESOLVED** (✅ included in migration or code)
+Status legend:
+- Open
+- In Progress
+- Resolved
 
 ---
 
-## 1. WIRING ISSUES (Backend-Frontend Contract)
+## Current Priority Order
 
-## 2. STYLING ISSUES (UI/UX Presentation)
+All previously tracked issues related to MED-001, MED-002, MED-003, MED-004, and LOW-001 have been resolved.
 
-No active styling issues remain in this document.
-
----
-
-## 3. DATA STRUCTURE ISSUES (Schema Alignment & Design)
+For completed work items, see the **[master_project_audit_and_tasks.md](../master_project_audit_and_tasks.md)** document which tracks all closure history.
 
 ---
 
-## 4. OPTIMIZATION ISSUES (Query & Performance)
+## Notes
 
-Optimization analysis has been archived in `z_documentation/Architecture.md` under **Future Scalability & Optimizations**.
+- Previously tracked items such as likes endpoint, user stats endpoint presence, and cross-content navigation endpoints are implemented.
+- Completed maintenance items (code cleanup, documentation consolidation, search optimization) are documented in master_project_audit_and_tasks.md.
 
----
-
-## 5. LOGICAL FLOW ISSUES (Feature Completeness)
-
-LOGICAL-001 has been implemented and archived in `z_documentation/Architecture.md` under moderation workflow improvements.
-LOGICAL-003 has been implemented and archived in `z_documentation/Architecture.md` under content navigation.
-LOGICAL-004 has been implemented and archived in `z_documentation/Architecture.md` under user and social system analytics.
-
----
-
-## Summary Table
-
-| Issue ID | Severity | Type | Status | Effort |
-|----------|----------|------|--------|--------|
-
-### Critical Path (Highest Priority)
-
-No high-priority logical-flow blockers remain in this document.
-
----
-
-## References
-
-- `README.md` – Quick introduction and current status
-- `Architecture.md` – System design and content delivery logic
-- `z_documentation/master_project_audit_and_tasks.md` – Master completion log
+- This file only lists currently unresolved issues discovered in the March 28, 2026 re-audit.

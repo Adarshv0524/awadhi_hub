@@ -1,5 +1,7 @@
 # app/api/v1/submissions.py
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import Optional, List, Any, Dict
@@ -63,6 +65,11 @@ class SubmissionOut(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class SubmissionDetailOut(SubmissionOut):
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 # --------- Helpers ---------
@@ -240,7 +247,7 @@ def list_my_submissions(
     return subs
 
 
-@router.get("/{submission_id}", response_model=SubmissionOut)
+@router.get("/{submission_id}", response_model=SubmissionDetailOut)
 def get_submission(
     submission_id: int,
     db: Session = Depends(get_db),
@@ -253,7 +260,7 @@ def get_submission(
     return sub
 
 
-@router.put("/{submission_id}", response_model=SubmissionOut)
+@router.put("/{submission_id}", response_model=SubmissionDetailOut)
 def update_submission(
     submission_id: int,
     data: SubmissionUpdateIn,

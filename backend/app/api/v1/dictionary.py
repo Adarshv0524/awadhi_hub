@@ -1,10 +1,10 @@
 # app/api/v1/dictionary.py
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Literal
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, asc, desc
 
 from app.db.session import get_db
 from app.db.models import (
@@ -36,12 +36,14 @@ class DictionaryOut(BaseModel):
     chapter_name: Optional[str]
     number_in_chapter: Optional[int]
     version: int
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     views_count: int = 0
     likes_count: int = 0
     shares_count: int = 0
     bookmarks_count: int = 0
+    search_hits_count: int = 0
+    weight_score: float = 0.0
 
     class Config:
         orm_mode = True
@@ -64,6 +66,8 @@ def _dictionary_query_with_metadata(db: Session):
             EngagementKPI.likes_count.label("likes_count"),
             EngagementKPI.shares_count.label("shares_count"),
             EngagementKPI.bookmarks_count.label("bookmarks_count"),
+            EngagementKPI.search_hits_count.label("search_hits_count"),
+            EngagementKPI.weight_score.label("weight_score"),
         )
         .outerjoin(ClassicalAuthor, ClassicalAuthor.id == DictionaryEntry.author_id)
         .outerjoin(ClassicalWork, ClassicalWork.id == DictionaryEntry.work_id)
@@ -88,6 +92,8 @@ def _serialize_dictionary_with_metadata(row) -> dict:
         likes_count,
         shares_count,
         bookmarks_count,
+        search_hits_count,
+        weight_score,
     ) = row
 
     return {
@@ -112,6 +118,8 @@ def _serialize_dictionary_with_metadata(row) -> dict:
         "likes_count": likes_count or 0,
         "shares_count": shares_count or 0,
         "bookmarks_count": bookmarks_count or 0,
+        "search_hits_count": search_hits_count or 0,
+        "weight_score": weight_score or 0.0,
     }
 
 
@@ -170,7 +178,18 @@ def _inc_view_kpi(db: Session, entry_id: int):
 
 @router.get("", response_model=List[DictionaryOut])
 def search_dictionary(
-    q: Optional[str] = Query(None, min_length=1),  # ← Make optional
+    q: Optional[str] = Query(None, min_length=1),
+    sort: Literal[
+        "created_at",
+        "updated_at",
+        "views_count",
+        "likes_count",
+        "shares_count",
+        "bookmarks_count",
+        "search_hits_count",
+        "weight_score",
+    ] = Query("created_at"),
+    order: Literal["asc", "desc"] = Query("desc"),
     db: Session = Depends(get_db),
     offset: int = 0,
     limit: int = 20,
@@ -183,8 +202,7 @@ def search_dictionary(
     query = _dictionary_query_with_metadata(db).filter(
         DictionaryEntry.visibility == "public"
     )
-    
-    # Apply search filter only if q is provided
+
     if q:
         q_norm = normalize_roman(q)
         query = query.filter(
@@ -194,8 +212,19 @@ def search_dictionary(
                 | DictionaryEntry.lemma_roman_norm.ilike(f"%{q_norm}%")
             )
         )
-    
-    results = query.order_by(DictionaryEntry.id.asc()).offset(offset).limit(limit).all()
+
+    sort_columns = {
+        "created_at": DictionaryEntry.created_at,
+        "updated_at": DictionaryEntry.updated_at,
+        "views_count": EngagementKPI.views_count,
+        "likes_count": EngagementKPI.likes_count,
+        "shares_count": EngagementKPI.shares_count,
+        "bookmarks_count": EngagementKPI.bookmarks_count,
+        "search_hits_count": EngagementKPI.search_hits_count,
+        "weight_score": EngagementKPI.weight_score,
+    }
+    order_fn = desc if order == "desc" else asc
+    results = query.order_by(order_fn(sort_columns[sort]), DictionaryEntry.id.desc()).offset(offset).limit(limit).all()
 
     # Only increment search KPI when actually searching (q provided)
     if q:

@@ -1,4 +1,5 @@
 ---
+// @ts-nocheck
 export const prerender = false;
 
 import BaseLayout from "../layouts/BaseLayout.astro";
@@ -10,18 +11,27 @@ const contentFilter = url.searchParams.get("type") || "all";
 const sortBy = url.searchParams.get("sort") || "relevance";
 const authorFilter = url.searchParams.get("author") || "";
 const workFilter = url.searchParams.get("work") || "";
+const allowedFilters = new Set(["all", "doha", "dictionary", "idiom", "article"]);
+const activeFilter = allowedFilters.has(contentFilter) ? contentFilter : "all";
 
+if (import.meta.env.DEV) {
+  console.log("Search module loaded for development testing.");
+}
+
+/** @type {any[]} */
 let dohas = [];
+/** @type {any[]} */
 let dictionary = [];
+/** @type {any[]} */
 let idioms = [];
+/** @type {any[]} */
 let articles = [];
+/** @type {string[]} */
 let errors = [];
 
 if (q) {
-  console.log("[SEARCH SSR] Query:", q);
-
   // Build search URLs with all filters
-  const buildSearchUrl = (endpoint: string) => {
+  const buildSearchUrl = (endpoint) => {
     const params = new URLSearchParams();
     params.set("q", q);
     if (authorFilter) params.set("author", authorFilter);
@@ -31,52 +41,64 @@ if (q) {
     return `${endpoint}?${params.toString()}`;
   };
 
-  // Execute all searches in parallel for better performance
-  const [dohaRes, dictRes, idiomRes, articleRes] = await Promise.allSettled([
-    api(buildSearchUrl("/search")),
-    api(`/dictionary?q=${encodeURIComponent(q)}&limit=20`),
-    api(`/idioms?q=${encodeURIComponent(q)}&limit=20`),
-    api(`/articles?q=${encodeURIComponent(q)}&limit=20`)
-  ]);
+  // MED-004 Optimization: Only fetch APIs for requested content types.
+  // If user filters to 'Doha', only call /search (doha endpoint).
+  // If user filters to 'all', call all four content APIs in parallel.
+  // This prevents unnecessary backend load and database hits for ignored categories.
+  const shouldFetch = (type) => activeFilter === "all" || activeFilter === type;
 
-  // Process doha results (returns {results: [...]} wrapper)
-  if (dohaRes.status === 'fulfilled') {
-    dohas = dohaRes.value?.results ?? dohaRes.value ?? [];
-    console.log("[SEARCH SSR] Doha results:", dohas.length, dohas);
-  } else {
-    console.error("[SEARCH SSR] Doha search failed", dohaRes.reason);
-    errors.push("Doha search failed");
+  /** @type {{ type: string; promise: Promise<any> }[]} */
+  const fanoutRequests = [];
+  if (shouldFetch("doha")) {
+    fanoutRequests.push({ type: "doha", promise: api(buildSearchUrl("/search")) });
+  }
+  if (shouldFetch("dictionary")) {
+    fanoutRequests.push({ type: "dictionary", promise: api(`/dictionary?q=${encodeURIComponent(q)}&limit=20`) });
+  }
+  if (shouldFetch("idiom")) {
+    fanoutRequests.push({ type: "idiom", promise: api(`/idioms?q=${encodeURIComponent(q)}&limit=20`) });
+  }
+  if (shouldFetch("article")) {
+    fanoutRequests.push({ type: "article", promise: api(`/articles?q=${encodeURIComponent(q)}&limit=20`) });
   }
 
-  // Process dictionary results (returns flat array)
-  if (dictRes.status === 'fulfilled') {
-    dictionary = Array.isArray(dictRes.value) ? dictRes.value : [];
-    console.log("[SEARCH SSR] Dictionary results:", dictionary.length, dictionary);
-  } else {
-    console.error("[SEARCH SSR] Dictionary search failed", dictRes.reason);
-    errors.push("Dictionary search failed");
-  }
+  const settled = await Promise.allSettled(fanoutRequests.map((r) => r.promise));
+  settled.forEach((result, index) => {
+    const type = fanoutRequests[index].type;
+    if (result.status !== "fulfilled") {
+      if (import.meta.env.DEV) {
+        const status = (result.reason && typeof result.reason === "object" && "status" in result.reason)
+          ? (result.reason as { status?: number }).status
+          : undefined;
+        console.error(`Search API Error [${type.toUpperCase()}]: ${status ?? "unknown"}`);
+      }
+      errors.push(`${type.charAt(0).toUpperCase() + type.slice(1)} search failed`);
+      return;
+    }
 
-  // Process idiom results (returns flat array)
-  if (idiomRes.status === 'fulfilled') {
-    idioms = Array.isArray(idiomRes.value) ? idiomRes.value : [];
-    console.log("[SEARCH SSR] Idiom results:", idioms.length, idioms);
-  } else {
-    console.error("[SEARCH SSR] Idiom search failed", idiomRes.reason);
-    errors.push("Idiom search failed");
-  }
-
-  // Process article results (returns flat array)
-  if (articleRes.status === 'fulfilled') {
-    articles = Array.isArray(articleRes.value) ? articleRes.value : [];
-    console.log("[SEARCH SSR] Article results:", articles.length, articles);
-  } else {
-    console.error("[SEARCH SSR] Article search failed", articleRes.reason);
-    errors.push("Article search failed");
-  }
+    if (type === "doha") {
+      dohas = result.value?.results ?? result.value ?? [];
+      return;
+    }
+    if (type === "dictionary") {
+      dictionary = Array.isArray(result.value) ? result.value : [];
+      return;
+    }
+    if (type === "idiom") {
+      idioms = Array.isArray(result.value) ? result.value : [];
+      return;
+    }
+    if (type === "article") {
+      articles = Array.isArray(result.value) ? result.value : [];
+    }
+  });
 }
 
 const totalResults = dohas.length + dictionary.length + idioms.length + articles.length;
+const showDoha = activeFilter === "all" || activeFilter === "doha";
+const showDictionary = activeFilter === "all" || activeFilter === "dictionary";
+const showIdiom = activeFilter === "all" || activeFilter === "idiom";
+const showArticle = activeFilter === "all" || activeFilter === "article";
 ---
 
 <BaseLayout title={q ? `Search: ${q}` : "Search"}>
@@ -136,7 +158,7 @@ const totalResults = dohas.length + dictionary.length + idioms.length + articles
           {authorFilter && (
             <div class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full bg-cyan-900/50 text-cyan-300 border border-cyan-700">
               <span>Author: {authorFilter}</span>
-              <a href={`/search?q=${q}${workFilter ? `&work=${workFilter}` : ''}${contentFilter !== 'all' ? `&type=${contentFilter}` : ''}${sortBy !== 'relevance' ? `&sort=${sortBy}` : ''}`} 
+                <a href={`/search?q=${q}${workFilter ? `&work=${workFilter}` : ''}${activeFilter !== 'all' ? `&type=${activeFilter}` : ''}${sortBy !== 'relevance' ? `&sort=${sortBy}` : ''}`} 
                  class="text-cyan-400 hover:text-cyan-200 ml-1"
                  aria-label="Remove author filter">×</a>
             </div>
@@ -144,7 +166,7 @@ const totalResults = dohas.length + dictionary.length + idioms.length + articles
           {workFilter && (
             <div class="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full bg-blue-900/50 text-blue-300 border border-blue-700">
               <span>Work: {workFilter}</span>
-              <a href={`/search?q=${q}${authorFilter ? `&author=${authorFilter}` : ''}${contentFilter !== 'all' ? `&type=${contentFilter}` : ''}${sortBy !== 'relevance' ? `&sort=${sortBy}` : ''}`}
+                <a href={`/search?q=${q}${authorFilter ? `&author=${authorFilter}` : ''}${activeFilter !== 'all' ? `&type=${activeFilter}` : ''}${sortBy !== 'relevance' ? `&sort=${sortBy}` : ''}`}
                  class="text-blue-400 hover:text-blue-200 ml-1"
                  aria-label="Remove work filter">×</a>
             </div>
@@ -156,7 +178,7 @@ const totalResults = dohas.length + dictionary.length + idioms.length + articles
             value="all"
             class:list={[
               "px-3 py-1.5 text-sm rounded-full transition-all",
-              contentFilter === "all" 
+              activeFilter === "all" 
                 ? "bg-cyan-600 text-white" 
                 : "bg-slate-700 text-slate-300 hover:bg-slate-600"
             ]}
@@ -167,7 +189,7 @@ const totalResults = dohas.length + dictionary.length + idioms.length + articles
             value="doha"
             class:list={[
               "px-3 py-1.5 text-sm rounded-full transition-all",
-              contentFilter === "doha" 
+              activeFilter === "doha" 
                 ? "bg-cyan-600 text-white" 
                 : "bg-slate-700 text-slate-300 hover:bg-slate-600"
             ]}
@@ -178,7 +200,7 @@ const totalResults = dohas.length + dictionary.length + idioms.length + articles
             value="dictionary"
             class:list={[
               "px-3 py-1.5 text-sm rounded-full transition-all",
-              contentFilter === "dictionary" 
+              activeFilter === "dictionary" 
                 ? "bg-blue-600 text-white" 
                 : "bg-slate-700 text-slate-300 hover:bg-slate-600"
             ]}
@@ -189,7 +211,7 @@ const totalResults = dohas.length + dictionary.length + idioms.length + articles
             value="idiom"
             class:list={[
               "px-3 py-1.5 text-sm rounded-full transition-all",
-              contentFilter === "idiom" 
+              activeFilter === "idiom" 
                 ? "bg-indigo-600 text-white" 
                 : "bg-slate-700 text-slate-300 hover:bg-slate-600"
             ]}
@@ -200,7 +222,7 @@ const totalResults = dohas.length + dictionary.length + idioms.length + articles
             value="article"
             class:list={[
               "px-3 py-1.5 text-sm rounded-full transition-all",
-              contentFilter === "article" 
+              activeFilter === "article" 
                 ? "bg-purple-600 text-white" 
                 : "bg-slate-700 text-slate-300 hover:bg-slate-600"
             ]}
@@ -297,7 +319,7 @@ const totalResults = dohas.length + dictionary.length + idioms.length + articles
           )}
         </div>
 
-        {dohas.length > 0 && (
+        {showDoha && dohas.length > 0 && (
           <section class="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
             <h2 class="text-xl font-bold mb-4 bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
               Doha ({dohas.length})
@@ -315,7 +337,7 @@ const totalResults = dohas.length + dictionary.length + idioms.length + articles
           </section>
         )}
 
-        {dictionary.length > 0 && (
+        {showDictionary && dictionary.length > 0 && (
           <section class="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
             <h2 class="text-xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
               Dictionary ({dictionary.length})
@@ -333,7 +355,7 @@ const totalResults = dohas.length + dictionary.length + idioms.length + articles
           </section>
         )}
 
-        {idioms.length > 0 && (
+        {showIdiom && idioms.length > 0 && (
           <section class="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
             <h2 class="text-xl font-bold mb-4 bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
               Idioms ({idioms.length})
@@ -351,7 +373,7 @@ const totalResults = dohas.length + dictionary.length + idioms.length + articles
           </section>
         )}
 
-        {articles.length > 0 && (
+        {showArticle && articles.length > 0 && (
           <section class="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
             <h2 class="text-xl font-bold mb-4 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
               Articles ({articles.length})

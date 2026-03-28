@@ -4,11 +4,13 @@ export const prerender = false;
 import BaseLayout from "../../../layouts/BaseLayout.astro";
 import { api } from "../../../lib/api";
 import Breadcrumbs from "../../../components/content/Breadcrumbs.svelte";
+import ChapterList from "../../../components/content/ChapterList.svelte";
+import "../../../styles/chapter.css";
 
 /**
  * Chapter page:
  * - Dedicated chapter doha endpoint: /content/by-path/{author}/{work}/{chapter}/dohas
- * - Fetch paginated results and merge on server for complete chapter rendering
+ * - Fetch only first page on server and incrementally load additional pages on client
  */
 
 const params = Astro.params ?? {};
@@ -31,49 +33,25 @@ const displayTitle = (() => (safeDecode(chapter) || "").replace(/-/g, " "));
 const hierarchy = `${author}/${work}/${chapter}`;
 const encodedPath = [author, work, chapter].map((p) => encodeURIComponent(String(p))).join("/");
 const chapterDohasBase = `/content/by-path/${encodedPath}/dohas`;
-const pageSize = 100;
+const pageSize = 30;
 
 let chapterItems = [];
 let total = 0;
 let pageError = null;
 let isEmptyChapter = false;
-
-async function fetchAllChapterDohas() {
-  let offset = 0;
-  const merged = [];
-  let expectedTotal = 0;
-
-  while (true) {
-    const res = await api(`${chapterDohasBase}?offset=${offset}&limit=${pageSize}`);
-    const items = Array.isArray(res?.items) ? res.items : [];
-    expectedTotal = Number(res?.total ?? merged.length + items.length);
-    merged.push(...items);
-
-    if (items.length < pageSize || merged.length >= expectedTotal) {
-      break;
-    }
-    offset += pageSize;
-  }
-
-  merged.sort((a, b) => {
-    const aNum = typeof a?.number_in_chapter === "number" ? a.number_in_chapter : Number.MAX_SAFE_INTEGER;
-    const bNum = typeof b?.number_in_chapter === "number" ? b.number_in_chapter : Number.MAX_SAFE_INTEGER;
-    if (aNum !== bNum) return aNum - bNum;
-    return (a?.id ?? 0) - (b?.id ?? 0);
-  });
-
-  return {
-    items: merged,
-    total: expectedTotal || merged.length,
-  };
-}
+let sequenceUnitLabel = "Verse";
+let nextOffset = 0;
 
 // Server-side fetch flow
 try {
-  const chapterData = await fetchAllChapterDohas();
-  chapterItems = chapterData.items;
-  total = chapterData.total;
+  const firstPage = await api(`${chapterDohasBase}?offset=0&limit=${pageSize}`);
+  chapterItems = Array.isArray(firstPage?.items) ? firstPage.items : [];
+  total = Number(firstPage?.total ?? chapterItems.length);
+  nextOffset = chapterItems.length;
   isEmptyChapter = chapterItems.length === 0;
+  if (chapterItems.some((item: any) => item?.content_type === "poem")) {
+    sequenceUnitLabel = "Stanza";
+  }
 } catch (err) {
   console.error("[Chapter] Unexpected error:", err);
   pageError = "Unexpected error while loading chapter.";
@@ -106,27 +84,15 @@ try {
     <section class="rounded-2xl border border-slate-700 bg-slate-900/50 p-5 md:p-6">
       <h1 class="text-3xl font-serif text-slate-100 mb-5">{displayTitle}</h1>
       <p class="text-sm text-slate-400 mb-4">Total verses: {total}</p>
-      <ul class="space-y-3">
-        {chapterItems.map((i, idx) => {
-          const itemId = i?.id;
-          const verseNumber = typeof i?.number_in_chapter === "number" ? i.number_in_chapter : idx + 1;
-          const itemLabel = i?.main_text || i?.hierarchy_path || `Verse ${verseNumber}`;
-          return (
-            <li class="rounded-lg border border-slate-700 bg-slate-950/45 px-4 py-3">
-              <div class="text-xs uppercase tracking-[0.16em] text-slate-400 mb-1">
-                Verse {verseNumber} of {total}
-              </div>
-              {itemId ? (
-                <a href={`/doha/${encodeURIComponent(itemId)}`} class="text-slate-100 hover:text-cyan-300">
-                  {String(itemLabel).slice(0, 180)}
-                </a>
-              ) : (
-                <span class="text-slate-300">{String(itemLabel).slice(0, 180)}</span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      <ChapterList
+        client:load
+        endpointBase={chapterDohasBase}
+        initialItems={chapterItems}
+        total={total}
+        initialOffset={nextOffset}
+        pageSize={pageSize}
+        sequenceUnitLabel={sequenceUnitLabel}
+      />
 
       <div class="mt-6">
         <a href={`/${encodeURIComponent(author)}/${encodeURIComponent(work)}`} class="text-cyan-300 hover:text-cyan-200">← Back to {safeDecode(work).replace(/-/g, " ")}</a>

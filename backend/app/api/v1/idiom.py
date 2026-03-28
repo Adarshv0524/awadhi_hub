@@ -1,10 +1,10 @@
 # app/api/v1/idiom.py
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Literal
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, asc, desc
 
 from app.db.session import get_db
 from app.db.models import (
@@ -36,12 +36,14 @@ class IdiomOut(BaseModel):
     chapter_name: Optional[str]
     number_in_chapter: Optional[int]
     version: int
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     views_count: int = 0
     likes_count: int = 0
     shares_count: int = 0
     bookmarks_count: int = 0
+    search_hits_count: int = 0
+    weight_score: float = 0.0
 
     class Config:
         orm_mode = True
@@ -58,6 +60,8 @@ def _idiom_query_with_metadata(db: Session):
             EngagementKPI.likes_count.label("likes_count"),
             EngagementKPI.shares_count.label("shares_count"),
             EngagementKPI.bookmarks_count.label("bookmarks_count"),
+            EngagementKPI.search_hits_count.label("search_hits_count"),
+            EngagementKPI.weight_score.label("weight_score"),
         )
         .outerjoin(ClassicalAuthor, ClassicalAuthor.id == IdiomEntry.author_id)
         .outerjoin(ClassicalWork, ClassicalWork.id == IdiomEntry.work_id)
@@ -82,6 +86,8 @@ def _serialize_idiom_with_metadata(row) -> dict:
         likes_count,
         shares_count,
         bookmarks_count,
+        search_hits_count,
+        weight_score,
     ) = row
 
     return {
@@ -103,6 +109,8 @@ def _serialize_idiom_with_metadata(row) -> dict:
         "likes_count": likes_count or 0,
         "shares_count": shares_count or 0,
         "bookmarks_count": bookmarks_count or 0,
+        "search_hits_count": search_hits_count or 0,
+        "weight_score": weight_score or 0.0,
     }
 
 
@@ -156,7 +164,18 @@ def _inc_view_kpi(db: Session, idiom_id: int):
 
 @router.get("", response_model=List[IdiomOut])
 def search_idioms(
-    q: Optional[str] = Query(None, min_length=1),  # ← Make optional
+    q: Optional[str] = Query(None, min_length=1),
+    sort: Literal[
+        "created_at",
+        "updated_at",
+        "views_count",
+        "likes_count",
+        "shares_count",
+        "bookmarks_count",
+        "search_hits_count",
+        "weight_score",
+    ] = Query("created_at"),
+    order: Literal["asc", "desc"] = Query("desc"),
     db: Session = Depends(get_db),
     offset: int = 0,
     limit: int = 20,
@@ -169,8 +188,7 @@ def search_idioms(
     query = _idiom_query_with_metadata(db).filter(
         IdiomEntry.visibility == "public"
     )
-    
-    # Apply search filter only if q is provided
+
     if q:
         q_norm = normalize_roman(q)
         query = query.filter(
@@ -180,8 +198,19 @@ def search_idioms(
                 | IdiomEntry.text_roman_norm.ilike(f"%{q_norm}%")
             )
         )
-    
-    results = query.order_by(IdiomEntry.id.asc()).offset(offset).limit(limit).all()
+
+    sort_columns = {
+        "created_at": IdiomEntry.created_at,
+        "updated_at": IdiomEntry.updated_at,
+        "views_count": EngagementKPI.views_count,
+        "likes_count": EngagementKPI.likes_count,
+        "shares_count": EngagementKPI.shares_count,
+        "bookmarks_count": EngagementKPI.bookmarks_count,
+        "search_hits_count": EngagementKPI.search_hits_count,
+        "weight_score": EngagementKPI.weight_score,
+    }
+    order_fn = desc if order == "desc" else asc
+    results = query.order_by(order_fn(sort_columns[sort]), IdiomEntry.id.desc()).offset(offset).limit(limit).all()
 
     # Only increment search KPI when actually searching
     if q:

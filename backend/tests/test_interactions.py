@@ -139,3 +139,35 @@ def test_user_likes_endpoint_admin_access(client, db):
     assert allowed.status_code == 200
     payload = allowed.json()
     assert payload["total_count"] >= 1
+
+
+def test_user_likes_endpoint_excludes_inactive_after_unlike(client, db):
+    owner = create_user(db, "likes-owner-4@example.com", Role.REGISTERED, "likes-owner-4")
+    token = create_access_token(owner.id)
+    doha = create_doha(db)
+
+    like_res = client.post(
+        "/interactions/toggle",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"content_type": "doha", "content_id": doha.id, "interaction": "like"},
+    )
+    assert like_res.status_code == 200
+    assert like_res.json().get("active") is True
+
+    unlike_res = client.post(
+        "/interactions/toggle",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"content_type": "doha", "content_id": doha.id, "interaction": "like"},
+    )
+    assert unlike_res.status_code == 200
+    assert unlike_res.json().get("active") is False
+
+    likes = client.get(
+        f"/interactions/users/{owner.id}/likes?limit=10&offset=0",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert likes.status_code == 200
+    payload = likes.json()
+    assert payload["total_count"] == 0
+    assert payload["count"] == 0
+    assert payload["results"] == []

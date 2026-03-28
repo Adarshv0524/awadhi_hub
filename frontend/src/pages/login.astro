@@ -56,7 +56,8 @@ export const prerender = false;
       <button
         id="google-login-btn"
         type="button"
-        class="w-full border border-gray-600 text-white py-2 rounded hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
+        class="w-full border border-gray-500 bg-slate-800/70 text-white py-2 rounded-md hover:bg-slate-700 transition-colors flex items-center justify-center gap-2 font-medium"
+        aria-label="Sign in with Google"
       >
         <svg class="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
           <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.2-1.4 3.6-5.5 3.6-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.2.8 3.9 1.5l2.7-2.6C17 3 14.7 2 12 2 6.9 2 2.8 6.1 2.8 11.2S6.9 20.4 12 20.4c6.9 0 9.2-4.8 9.2-7.2 0-.5 0-.8-.1-1.2H12z"/>
@@ -72,6 +73,8 @@ export const prerender = false;
   </div>
 
   <script>
+    import { initiateGoogleAuth } from "../lib/googleAuth";
+
     document.addEventListener('DOMContentLoaded', () => {
       const form = document.getElementById("login-form") as HTMLFormElement | null;
       const errorEl = document.getElementById("login-error") as HTMLParagraphElement | null;
@@ -106,9 +109,13 @@ export const prerender = false;
       const googleBtn = document.getElementById('google-login-btn') as HTMLButtonElement | null;
       if (googleBtn) {
         googleBtn.addEventListener('click', () => {
-          const API_BASE = import.meta.env.PUBLIC_API_BASE || "http://localhost:8000";
           const next = params.get('next') || '/';
-          window.location.href = `${API_BASE}/auth/oauth/google/login?next=${encodeURIComponent(next)}`;
+          try {
+            initiateGoogleAuth({ next });
+          } catch (err: any) {
+            errorEl.textContent = err?.message || 'Google login is unavailable. Please try email login.';
+            errorEl.classList.remove('hidden');
+          }
         });
       }
 

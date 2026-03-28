@@ -21,109 +21,117 @@ from app.db.models import (
 )
 from app.services.audit_service import record_audit
 from app.utils.text_normalize import normalize_roman
-from app.schemas.content_navigation import DohaNavCard, DohaNavigationOut
+from app.schemas.content_navigation import ContentNavCard, ContentNavigationOut
 
 logger = logging.getLogger("app.content_service")
 
 
-def get_doha_navigation(db: Session, doha_id: int) -> DohaNavigationOut:
-    """
-    Return prev/current/next doha cards within the same chapter.
-    
-    Ordering strategy (deterministic, non-shuffling):
-    1. Primary: number_in_chapter (handles gapped sequences by finding nearest ordered neighbor)
-    2. Secondary: created_at (for items without number_in_chapter)
-    3. Tertiary: id (final tiebreaker)
-    """
-    current = (
-        db.query(DohaEntry)
-        .filter(
-            DohaEntry.id == doha_id,
-            DohaEntry.is_deleted == False,
-            DohaEntry.status == "active",
-        )
-        .first()
-    )
-    if not current:
-        raise HTTPException(status_code=404, detail="Doha not found")
+def _get_model_class(content_type: str):
+    mapping = {
+        "doha": DohaEntry,
+        "dictionary": DictionaryEntry,
+        "idiom": IdiomEntry,
+        "article": ArticleEntry,
+    }
+    model = mapping.get(content_type)
+    if not model:
+        raise HTTPException(status_code=400, detail=f"Unsupported content_type: {content_type}")
+    return model
 
-    def _to_card(entry: DohaEntry) -> DohaNavCard:
+
+def _get_content_text(model, entry) -> tuple[Optional[str], str]:
+    if model is DohaEntry:
         text = (entry.main_text or "").strip()
-        short_text = text if len(text) <= 120 else f"{text[:117]}..."
-        return DohaNavCard(
-            id=entry.id,
-            number_in_chapter=entry.number_in_chapter,
-            title=None,
-            short_text=short_text,
-        )
+        short = text if len(text) <= 120 else f"{text[:117]}..."
+        return None, short
+    if model is DictionaryEntry:
+        title = (entry.lemma_devanagari or entry.lemma_roman or f"dictionary #{entry.id}").strip()
+        short = title if len(title) <= 120 else f"{title[:117]}..."
+        return title, short
+    if model is IdiomEntry:
+        text = (entry.text_devanagari or entry.text_roman or f"idiom #{entry.id}").strip()
+        short = text if len(text) <= 120 else f"{text[:117]}..."
+        return None, short
+    if model is ArticleEntry:
+        title = (entry.title or f"article #{entry.id}").strip()
+        body = (entry.excerpt or entry.body or "").strip()
+        short = body if body else title
+        short = short if len(short) <= 120 else f"{short[:117]}..."
+        return title, short
+    return None, f"{getattr(entry, 'id', '?')}"
+
+
+def _apply_active_content_filters(query, model):
+    if hasattr(model, "is_deleted"):
+        query = query.filter(model.is_deleted == False)
+    if hasattr(model, "status"):
+        query = query.filter(model.status == "active")
+    return query
+
+
+def get_content_navigation(db: Session, content_type: str, content_id: int) -> ContentNavigationOut:
+    model = _get_model_class(content_type)
+
+    current_q = db.query(model).filter(model.id == content_id)
+    current_q = _apply_active_content_filters(current_q, model)
+    current = current_q.first()
+
+    if not current:
+        raise HTTPException(status_code=404, detail=f"{content_type.title()} entry not found")
+    if getattr(current, "chapter_id", None) is None:
+        raise HTTPException(status_code=404, detail=f"{content_type.title()} entry is not chapter-linked")
+
+    base_q = db.query(model).filter(model.chapter_id == current.chapter_id)
+    base_q = _apply_active_content_filters(base_q, model)
 
     previous = None
     next_item = None
 
-    if current.chapter_id is not None:
-        # Strategy: Find previous/next neighbors with strict ordering fallback
-        # This handles both sequential and gapped number_in_chapter values
-        
-        if current.number_in_chapter is not None:
-            # Find previous: largest number_in_chapter < current.number_in_chapter
-            # Fallback to created_at, then id for determinism
+    current_num = getattr(current, "number_in_chapter", None)
+    if current_num is not None:
+        previous = (
+            base_q.filter(model.number_in_chapter < current_num)
+            .order_by(model.number_in_chapter.desc(), model.created_at.desc(), model.id.desc())
+            .first()
+        )
+        next_item = (
+            base_q.filter(model.number_in_chapter > current_num)
+            .order_by(model.number_in_chapter.asc(), model.created_at.asc(), model.id.asc())
+            .first()
+        )
+    else:
+        created_at = getattr(current, "created_at", None)
+        if created_at is not None:
             previous = (
-                db.query(DohaEntry)
-                .filter(
-                    DohaEntry.chapter_id == current.chapter_id,
-                    DohaEntry.number_in_chapter < current.number_in_chapter,
-                    DohaEntry.is_deleted == False,
-                    DohaEntry.status == "active",
-                )
-                .order_by(DohaEntry.number_in_chapter.desc(), DohaEntry.created_at.desc(), DohaEntry.id.desc())
+                base_q.filter(model.created_at < created_at)
+                .order_by(model.created_at.desc(), model.id.desc())
                 .first()
             )
-
-            # Find next: smallest number_in_chapter > current.number_in_chapter
-            # Fallback to created_at, then id for determinism
             next_item = (
-                db.query(DohaEntry)
-                .filter(
-                    DohaEntry.chapter_id == current.chapter_id,
-                    DohaEntry.number_in_chapter > current.number_in_chapter,
-                    DohaEntry.is_deleted == False,
-                    DohaEntry.status == "active",
-                )
-                .order_by(DohaEntry.number_in_chapter.asc(), DohaEntry.created_at.asc(), DohaEntry.id.asc())
-                .first()
-            )
-        else:
-            # Fallback ordering when number_in_chapter is None
-            # Use created_at as primary, id as secondary
-            previous = (
-                db.query(DohaEntry)
-                .filter(
-                    DohaEntry.chapter_id == current.chapter_id,
-                    DohaEntry.created_at < current.created_at,
-                    DohaEntry.is_deleted == False,
-                    DohaEntry.status == "active",
-                )
-                .order_by(DohaEntry.created_at.desc(), DohaEntry.id.desc())
+                base_q.filter(model.created_at > created_at)
+                .order_by(model.created_at.asc(), model.id.asc())
                 .first()
             )
 
-            next_item = (
-                db.query(DohaEntry)
-                .filter(
-                    DohaEntry.chapter_id == current.chapter_id,
-                    DohaEntry.created_at > current.created_at,
-                    DohaEntry.is_deleted == False,
-                    DohaEntry.status == "active",
-                )
-                .order_by(DohaEntry.created_at.asc(), DohaEntry.id.asc())
-                .first()
-            )
+    def _to_card(entry):
+        title, short_text = _get_content_text(model, entry)
+        return ContentNavCard(
+            id=entry.id,
+            number_in_chapter=getattr(entry, "number_in_chapter", None),
+            content_type=content_type,
+            title=title,
+            short_text=short_text,
+        )
 
-    return DohaNavigationOut(
+    return ContentNavigationOut(
         previous=_to_card(previous) if previous else None,
         current=_to_card(current),
         next=_to_card(next_item) if next_item else None,
     )
+
+
+def get_doha_navigation(db: Session, doha_id: int) -> ContentNavigationOut:
+    return get_content_navigation(db, "doha", doha_id)
 
 # ---- Validators (pydantic) ----
 class DictionarySense(BaseModel):
@@ -462,9 +470,10 @@ def create_canonical_dictionary_from_submission(db: Session, submission, moderat
 def create_canonical_idiom_from_submission(db: Session, submission, moderator_user) -> int:
     # accept both new and legacy keys
     refs = submission.external_references or getattr(submission, "references", None) or {}
+    text_roman = refs.get("text_roman") or refs.get("textRoman") or refs.get("romanized_text")
     payload_dict = {
         "text_devanagari": refs.get("text_devanagari") or submission.main_text,
-        "text_roman": refs.get("text_roman") or refs.get("textRoman"),
+        "text_roman": text_roman,
         "meaning": submission.meaning or refs.get("meaning"),
         "examples": refs.get("examples"),
         "region": refs.get("region"),

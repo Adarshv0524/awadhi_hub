@@ -1,9 +1,11 @@
 # app/api/v1/article.py
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Literal
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, and_, asc, desc
 
 from app.db.session import get_db
 from app.db.models import ArticleEntry, EngagementKPI, User
@@ -72,6 +74,8 @@ class ArticleListOut(BaseModel):
     likes_count: int = 0
     shares_count: int = 0
     bookmarks_count: int = 0
+    search_hits_count: int = 0
+    weight_score: float = 0.0
     
     class Config:
         from_attributes = True
@@ -91,12 +95,14 @@ class ArticleDetailOut(BaseModel):
     source_submission_id: Optional[int]
     visibility: str
     version: int
-    created_at: Optional[str]
-    updated_at: Optional[str]
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     views_count: int = 0
     likes_count: int = 0
     shares_count: int = 0
     bookmarks_count: int = 0
+    search_hits_count: int = 0
+    weight_score: float = 0.0
     
     class Config:
         from_attributes = True
@@ -125,6 +131,8 @@ def _article_kpi_map(db: Session, article_ids: List[int]) -> dict[int, dict]:
             "likes_count": r.likes_count or 0,
             "shares_count": r.shares_count or 0,
             "bookmarks_count": r.bookmarks_count or 0,
+            "search_hits_count": r.search_hits_count or 0,
+            "weight_score": r.weight_score or 0.0,
         }
         for r in rows
     }
@@ -137,11 +145,41 @@ def _article_author_map(db: Session, author_ids: List[int]) -> dict[int, str]:
     rows = db.query(User.id, User.username, User.email).filter(User.id.in_(author_ids)).all()
     return {r.id: (r.username or r.email) for r in rows}
 
+
+def _apply_article_order(query, sort: str, order: str):
+    metric_columns = {
+        "views_count": func.coalesce(EngagementKPI.views_count, 0),
+        "likes_count": func.coalesce(EngagementKPI.likes_count, 0),
+        "shares_count": func.coalesce(EngagementKPI.shares_count, 0),
+        "bookmarks_count": func.coalesce(EngagementKPI.bookmarks_count, 0),
+        "search_hits_count": func.coalesce(EngagementKPI.search_hits_count, 0),
+        "weight_score": func.coalesce(EngagementKPI.weight_score, 0.0),
+    }
+    base_columns = {
+        "created_at": ArticleEntry.created_at,
+        "updated_at": ArticleEntry.updated_at,
+    }
+    sort_column = metric_columns[sort] if sort in metric_columns else base_columns[sort]
+    order_fn = desc if order == "desc" else asc
+    return query.order_by(order_fn(sort_column), ArticleEntry.id.desc())
+
+
 # Routes
 @router.get("", response_model=List[ArticleListOut])
 def list_articles(
     q: Optional[str] = Query(None, description="Search query for title or body"),
     tag: Optional[str] = Query(None, description="Filter by tag"),
+    sort: Literal[
+        "created_at",
+        "updated_at",
+        "views_count",
+        "likes_count",
+        "shares_count",
+        "bookmarks_count",
+        "search_hits_count",
+        "weight_score",
+    ] = Query("created_at"),
+    order: Literal["asc", "desc"] = Query("desc"),
     offset: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -149,28 +187,40 @@ def list_articles(
     """
     List articles with optional search and filtering.
     - Public visibility only
-    - Ordered by creation date (newest first)
+    - Ordered by configured sort/order (default newest first)
     - Tracks search hits in engagement KPIs when q is provided
     """
-    query = db.query(ArticleEntry).filter(ArticleEntry.visibility == "public")
-    
+    query = (
+        db.query(ArticleEntry)
+        .outerjoin(
+            EngagementKPI,
+            and_(
+                EngagementKPI.content_type == "article",
+                EngagementKPI.content_id == ArticleEntry.id,
+            ),
+        )
+        .filter(ArticleEntry.visibility == "public")
+    )
+
     if tag:
         # Filter by tag (assuming tags is a JSON array)
         query = query.filter(ArticleEntry.tags.contains([tag]))
-    
+
     if q:
         q_norm = q.strip().lower()
-        # Try exact title match first
-        exact = query.filter(
-            or_(
-                ArticleEntry.title == q,
-                ArticleEntry.title_devanagari == q,
-                ArticleEntry.title_roman_norm == q_norm
-            )
+        exact = _apply_article_order(
+            query.filter(
+                or_(
+                    ArticleEntry.title == q,
+                    ArticleEntry.title_devanagari == q,
+                    ArticleEntry.title_roman_norm == q_norm,
+                )
+            ),
+            sort,
+            order,
         ).all()
-        
+
         if exact:
-            # Track search hits in KPIs
             for e in exact:
                 _inc_search_kpi(db, e.id)
             db.commit()
@@ -183,7 +233,7 @@ def list_articles(
             ]
             kpi_map = _article_kpi_map(db, article_ids)
             author_map = _article_author_map(db, author_ids)
-            
+
             return [ArticleListOut(
                 id=e.id,
                 title=e.title,
@@ -199,26 +249,30 @@ def list_articles(
                     "likes_count": 0,
                     "shares_count": 0,
                     "bookmarks_count": 0,
+                    "search_hits_count": 0,
+                    "weight_score": 0.0,
                 }),
             ) for e in exact]
-        
-        # Fallback to LIKE search in title and body
+
         like_q = f"%{q}%"
-        rows = query.filter(
-            or_(
-                ArticleEntry.title.ilike(like_q),
-                ArticleEntry.title_devanagari.ilike(like_q),
-                ArticleEntry.title_roman.ilike(like_q),
-                ArticleEntry.body.ilike(like_q)
-            )
-        ).order_by(ArticleEntry.created_at.desc()).offset(offset).limit(limit).all()
-        
-        # Track search hits in KPIs
+        rows = _apply_article_order(
+            query.filter(
+                or_(
+                    ArticleEntry.title.ilike(like_q),
+                    ArticleEntry.title_devanagari.ilike(like_q),
+                    ArticleEntry.title_roman.ilike(like_q),
+                    ArticleEntry.body.ilike(like_q),
+                )
+            ),
+            sort,
+            order,
+        ).offset(offset).limit(limit).all()
+
         for r in rows:
             _inc_search_kpi(db, r.id)
         db.commit()
     else:
-        rows = query.order_by(ArticleEntry.created_at.desc()).offset(offset).limit(limit).all()
+        rows = _apply_article_order(query, sort, order).offset(offset).limit(limit).all()
     
     article_ids = [r.id for r in rows]
     author_ids = [
@@ -244,6 +298,8 @@ def list_articles(
             "likes_count": 0,
             "shares_count": 0,
             "bookmarks_count": 0,
+            "search_hits_count": 0,
+            "weight_score": 0.0,
         }),
     ) for r in rows]
 
@@ -329,82 +385,23 @@ def advanced_search_articles(
         for r in rows
     ]
 
-@router.get("/{article_id}")
-def get_article(article_id: int, db: Session = Depends(get_db)):
+@router.get("/tags/list")
+def list_all_tags(db: Session = Depends(get_db)):
     """
-    Get detailed information about a specific article.
-    Increments view count in engagement KPIs.
+    Get a list of all unique tags used in articles.
     """
-    row = db.query(ArticleEntry).filter(
-        ArticleEntry.id == article_id,
-        ArticleEntry.visibility == "public"
-    ).first()
-    
-    if not row:
-        raise HTTPException(status_code=404, detail="Article not found")
-    
-    # Track view in engagement KPIs
-    _inc_view_kpi(db, article_id)
-    db.commit()
+    articles = db.query(ArticleEntry).filter(
+        ArticleEntry.visibility == "public",
+        ArticleEntry.tags.isnot(None)
+    ).all()
 
-    kpi = db.query(EngagementKPI).filter_by(content_type="article", content_id=article_id).first()
-    author_name = None
-    display_user_id = row.author_id if row.author_id is not None else row.contributor_id
-    if display_user_id is not None:
-        author = db.query(User.id, User.username, User.email).filter(User.id == display_user_id).first()
-        if author:
-            author_name = author.username or author.email
-    
-    return {
-        "id": row.id,
-        "title": row.title,
-        "title_devanagari": row.title_devanagari,
-        "title_roman": row.title_roman,
-        "title_roman_norm": row.title_roman_norm,
-        "body": row.body,
-        "excerpt": row.excerpt,
-        "author_id": row.author_id,
-        "author_name": author_name,
-        "tags": row.tags,
-        "contributor_id": row.contributor_id,
-        "source_submission_id": row.source_submission_id,
-        "visibility": row.visibility,
-        "version": row.version,
-        "created_at": row.created_at.isoformat() if row.created_at else None,
-        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-        "views_count": (kpi.views_count if kpi else 0) or 0,
-        "likes_count": (kpi.likes_count if kpi else 0) or 0,
-        "shares_count": (kpi.shares_count if kpi else 0) or 0,
-        "bookmarks_count": (kpi.bookmarks_count if kpi else 0) or 0,
-    }
+    all_tags = set()
+    for article in articles:
+        if article.tags and isinstance(article.tags, list):
+            all_tags.update(article.tags)
 
-@router.get("/by-tag/{tag}")
-def get_articles_by_tag(
-    tag: str,
-    offset: int = Query(0, ge=0),
-    limit: int = Query(25, ge=1, le=100),
-    db: Session = Depends(get_db),
-):
-    """
-    Get all articles with a specific tag.
-    """
-    rows = db.query(ArticleEntry).filter(
-        ArticleEntry.tags.contains([tag]),
-        ArticleEntry.visibility == "public"
-    ).order_by(ArticleEntry.created_at.desc()).offset(offset).limit(limit).all()
-    
-    return [
-        {
-            "id": r.id,
-            "title": r.title,
-            "title_devanagari": r.title_devanagari,
-            "title_roman": r.title_roman,
-            "excerpt": r.excerpt,
-            "tags": r.tags,
-            "created_at": r.created_at.isoformat() if r.created_at else None
-        }
-        for r in rows
-    ]
+    return {"tags": sorted(list(all_tags))}
+
 
 @router.get("/recent/list")
 def get_recent_articles(
@@ -435,19 +432,83 @@ def get_recent_articles(
         for r in rows
     ]
 
-@router.get("/tags/list")
-def list_all_tags(db: Session = Depends(get_db)):
+
+@router.get("/by-tag/{tag}")
+def get_articles_by_tag(
+    tag: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(25, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
     """
-    Get a list of all unique tags used in articles.
+    Get all articles with a specific tag.
     """
-    articles = db.query(ArticleEntry).filter(
-        ArticleEntry.visibility == "public",
-        ArticleEntry.tags.isnot(None)
-    ).all()
-    
-    all_tags = set()
-    for article in articles:
-        if article.tags and isinstance(article.tags, list):
-            all_tags.update(article.tags)
-    
-    return {"tags": sorted(list(all_tags))}
+    rows = db.query(ArticleEntry).filter(
+        ArticleEntry.tags.contains([tag]),
+        ArticleEntry.visibility == "public"
+    ).order_by(ArticleEntry.created_at.desc()).offset(offset).limit(limit).all()
+
+    return [
+        {
+            "id": r.id,
+            "title": r.title,
+            "title_devanagari": r.title_devanagari,
+            "title_roman": r.title_roman,
+            "excerpt": r.excerpt,
+            "tags": r.tags,
+            "created_at": r.created_at.isoformat() if r.created_at else None
+        }
+        for r in rows
+    ]
+
+
+@router.get("/{article_id}")
+def get_article(article_id: int, db: Session = Depends(get_db)):
+    """
+    Get detailed information about a specific article.
+    Increments view count in engagement KPIs.
+    """
+    row = db.query(ArticleEntry).filter(
+        ArticleEntry.id == article_id,
+        ArticleEntry.visibility == "public"
+    ).first()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    # Track view in engagement KPIs
+    _inc_view_kpi(db, article_id)
+    db.commit()
+
+    kpi = db.query(EngagementKPI).filter_by(content_type="article", content_id=article_id).first()
+    author_name = None
+    display_user_id = row.author_id if row.author_id is not None else row.contributor_id
+    if display_user_id is not None:
+        author = db.query(User.id, User.username, User.email).filter(User.id == display_user_id).first()
+        if author:
+            author_name = author.username or author.email
+
+    return {
+        "id": row.id,
+        "title": row.title,
+        "title_devanagari": row.title_devanagari,
+        "title_roman": row.title_roman,
+        "title_roman_norm": row.title_roman_norm,
+        "body": row.body,
+        "excerpt": row.excerpt,
+        "author_id": row.author_id,
+        "author_name": author_name,
+        "tags": row.tags,
+        "contributor_id": row.contributor_id,
+        "source_submission_id": row.source_submission_id,
+        "visibility": row.visibility,
+        "version": row.version,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+        "views_count": (kpi.views_count if kpi else 0) or 0,
+        "likes_count": (kpi.likes_count if kpi else 0) or 0,
+        "shares_count": (kpi.shares_count if kpi else 0) or 0,
+        "bookmarks_count": (kpi.bookmarks_count if kpi else 0) or 0,
+        "search_hits_count": (kpi.search_hits_count if kpi else 0) or 0,
+        "weight_score": (kpi.weight_score if kpi else 0.0) or 0.0,
+    }

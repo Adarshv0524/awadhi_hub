@@ -206,6 +206,29 @@ All support hierarchy linking: `author_id`, `work_id`, `chapter_id`, `number_in_
 
 ## Part 2: Linked-List Sequencing Logic
 
+### API Headers
+
+#### Global Sorting Policy (MED-001 Resolved)
+
+All list-style API endpoints for canonical content modules must expose a shared ordering contract:
+
+- Query params: `sort`, `order`, `offset`, `limit`
+- Universal default: `sort=created_at&order=desc`
+- Supported modules:
+    - `GET /content/doha`
+    - `GET /articles`
+    - `GET /dictionary`
+    - `GET /idioms`
+
+Standardized sortable fields include canonical timestamps and engagement metrics:
+- `created_at`, `updated_at`
+- `views_count`, `likes_count`, `shares_count`, `bookmarks_count`, `search_hits_count`, `weight_score`
+
+Policy rationale:
+- Predictable newest-first browsing across modules.
+- Transparent override when users explicitly request ranking by metrics.
+- Consistent pagination behavior independent of content type.
+
 ### 2.1 Chapter Content Navigation: Prev/Current/Next
 
 **Problem**: Users reading chapter-linked content need deterministic next/previous traversal without returning to chapter listings.
@@ -359,6 +382,51 @@ Then rendered via:
   nextText={navigation?.next?.short_text}
 />
 ```
+
+#### Accessibility Standards (Frontend)
+
+All interactive frontend controls must follow semantic and assistive-technology-safe patterns:
+
+1. Use native `<button>` elements for clickable actions (likes, bookmarks, shares, modal actions) instead of clickable `<div>`/`<span>` wrappers.
+2. Every interactive control must include a descriptive `aria-label` when visible text/icon alone is ambiguous.
+3. Modal/dialog form controls must bind labels with explicit `for`/`id` pairs.
+4. Modal dialogs must provide keyboard-safe behavior: initial focus placement, tab-cycle trapping, and Escape-to-close support.
+
+Reference implementation:
+- `frontend/src/components/interaction/InteractionBar.svelte`
+
+#### SEO & Metadata (Prop-Driven Layout Pattern)
+
+To prevent duplicate metadata and crawler ambiguity, page-level SEO tags must be emitted only by the shared layout.
+
+Policy:
+1. `frontend/src/layouts/BaseLayout.astro` is the single source of truth for `<meta name="description">` and `<link rel="canonical">`.
+2. Detail pages (doha, dictionary, idiom, article) must pass `title`, `description`, and optional `canonicalURL` as props to `BaseLayout`.
+3. Detail pages must not add hard-coded canonical/description tags inside local `<head>` blocks.
+4. Layout fallback rules apply when props are missing (site-wide default description and pathname-derived canonical URL).
+
+Result:
+- Exactly one canonical tag and one description tag per rendered page.
+- Consistent metadata ownership for all new routes.
+
+#### Data Fetching Patterns (Incremental Loading Mandate)
+
+Collection-oriented frontend views must use incremental loading instead of fetch-all/merge loops.
+
+Mandate:
+1. Server-side render only the first page (`offset=0`, bounded `limit`) for fast initial paint.
+2. Hydrated client components append subsequent pages incrementally (Load More and/or Intersection Observer).
+3. Existing rendered rows must be preserved and extended in-place; do not refetch the entire collection on each page step.
+4. Show explicit loading state while fetching additional pages.
+
+Required for:
+- Chapter content lists
+- Search result collections
+- User history collections (likes/bookmarks/submissions)
+
+Reference implementation:
+- `frontend/src/pages/[author]/[work]/[chapter].astro`
+- `frontend/src/components/content/ChapterList.svelte`
 
 #### Handling Edge Cases
 
@@ -592,31 +660,42 @@ Response contract (`UserStatsOut`):
 ```python
 class UserStatsOut(BaseModel):
      username: str
-     contributions_count: int
-     likes_received: int
+     contributions_count: int  # approved public canonical contributions only
+     likes_received: int       # likes on approved public canonical contributions
      most_liked_content_id: Optional[int]
-     average_engagement_score: float
+     average_engagement_score: float  # avg KPI weight_score on same scoped set
      joined_date: datetime
 ```
+
+Analytics scope policy (MED-002 resolved):
+- Single source set: approved + public + non-deleted canonical contributions authored by the user.
+- This set is built as a polymorphic union across canonical modules:
+    - `doha_entries` (plus `status=active`, `is_canonical=true`, `visibility=public`, `is_deleted=false`)
+    - `dictionary_entries` (`visibility=public`)
+    - `idiom_entries` (`visibility=public`)
+    - `article_entries` (`visibility=public`)
+- Each canonical row must be linked to a `submissions` row where:
+    - `status=approved`
+    - `visibility=public`
+    - `is_deleted=false`
 
 Aggregation rules:
 
 1. `contributions_count`:
-    - Count `submissions` where `contributor_id` matches the user, `status == "approved"`, and `is_deleted == False`.
+    - Count canonical rows in the scoped union (not raw submissions).
 2. `likes_received`:
-    - Build a polymorphic union of canonical content rows (`doha`, `dictionary`, `idiom`, `article`) linked through `source_submission_id` to this contributor's approved/public submissions.
-    - Left join `engagement_kpis` on `(content_type, content_id)` and compute `SUM(likes_count)`.
+    - Left join `engagement_kpis` on `(content_type, content_id)` for the same union and compute `SUM(likes_count)`.
 3. `average_engagement_score`:
-    - On the same KPI join, compute `AVG(weight_score)` and default to `0.0` if empty.
+    - Compute `AVG(weight_score)` on the same joined set and default to `0.0` when empty.
 4. `most_liked_content_id`:
-    - Order joined rows by `likes_count DESC`, then `content_id ASC`; return the top `content_id`, else `null`.
+    - Select top row ordered by `likes_count DESC`, then `content_id ASC`; return `null` when no scoped contributions exist.
 
 Privacy contract:
 
 - Endpoint is public (no auth required) for profile visibility.
 - No private identity fields are returned (email, password hash, tokens, moderation data).
-- Draft/rejected/deleted submissions are excluded from contribution counts.
-- KPI rollups for public profiles are computed from approved/public canonical contributions.
+- Draft/rejected/private/deleted contributions are excluded from all user-facing metrics.
+- All profile rollups use one transparent scope so dashboard numbers remain internally consistent.
 
 ---
 
@@ -724,6 +803,20 @@ Verified behavior:
 - Regular users receive 403 when attempting hierarchy metadata edits.
 - Regular text-only edits continue to work for eligible contributor-owned submissions.
 
+### 5.3 Unified Submission-to-Canonical Pipeline (CRIT-002 Resolved)
+
+Submission and moderation contracts are aligned across all content types (`doha`, `dictionary`, `idiom`, `article`) with a single moderation approval path that materializes canonical entries from submission data.
+
+Alignment status:
+- **Doha**: `main_text` and `meaning` map into canonical `doha_entries` and `content_versions`.
+- **Dictionary**: `external_references` carries lexical structure (`lemma_devanagari`, `lemma_roman`, `senses`) for canonical dictionary creation.
+- **Idiom**: frontend submission captures **Romanized Text** and sends `external_references.text_roman`; moderation canonicalization validates it through `IdiomPayload` and persists it into `idiom_entries.text_roman`.
+- **Article**: title/body metadata is resolved from submission fields plus `external_references` and persisted into canonical `article_entries`.
+
+Result:
+- No content type now depends on an uncollected frontend field during moderation approval.
+- Submission-to-canonical transformation is contract-aligned for all four canonical tables.
+
 ---
 
 ## Part 6: Integration Points & Future Extensibility
@@ -778,6 +871,40 @@ Component contract:
 
 ### 6.3 Future Scalability & Optimizations
 
+### Search & Discovery
+
+#### Fan-out Pattern for Multi-Category Search (HIGH-001 Resolved)
+
+The search page applies a filter-aware fan-out policy in SSR request orchestration:
+
+1. Read the user-selected `type` filter (`all`, `doha`, `dictionary`, `idiom`, `article`).
+2. Build only the API request set needed for that filter.
+3. Execute the selected requests in parallel with `Promise.allSettled`.
+4. Render only the matching result sections in the response DOM.
+
+Behavior by filter:
+- `type=all`: fan out to all category endpoints (`/search`, `/dictionary`, `/idioms`, `/articles`).
+- `type=dictionary`: call only dictionary search endpoint.
+- `type=idiom`: call only idiom search endpoint.
+- `type=doha`: call only doha search endpoint.
+- `type=article`: call only article search endpoint.
+
+Lifecycle impact:
+- User preference is applied before network fan-out, reducing unnecessary API calls.
+- Filtered mode lowers backend load and response payload size.
+- Rendering stays aligned with the selected category, avoiding cross-category visual noise.
+
+### Security & Logging Policy
+
+Server-side rendering and API orchestration must follow these logging constraints:
+
+1. Never log user-generated input values (search queries, form text, free-text metadata) to server console output in production.
+2. Never log full API response payloads containing user-generated content.
+3. If diagnostics are required, guard them with `import.meta.env.DEV` and keep messages high-level.
+4. Error logs should use generic categories/status only (for example, `Search API Error [IDIOM]: 500`) without embedding query text.
+
+This policy applies to search, submissions, moderation tooling, and any SSR route that handles contributor or reader input.
+
 This section archives low-priority optimization ideas that are currently not justified by observed latency.
 
 #### [OPTIMIZATION-001] Chapter Page Fallbacks
@@ -816,7 +943,50 @@ Operational note:
 
 ---
 
+## Documentation Governance (LOW-001)
+
+**Principle**: Single source of truth prevents status drift across documentation files.
+
+### Authority Hierarchy
+
+1. **Primary Authority**: `z_documentation/issues/Issues.md`
+   - Only file containing current project status and issue tracking
+   - Updated immediately when implementation status changes
+   - Referenced by all other documentation for status verification
+
+2. **Secondary References** (Technical Details Only):
+   - `Architecture.md` – Design decisions and architectural rationale
+   - `MODULE_STATUS_REPORT.md` – Per-module implementation breakdown (historical reference)
+   - `RUNTIME_ANALYSIS.md` – Performance metrics and diagnostic observations
+   - `API_REFERENCE.md` – API contract specifications
+   - `CONTENT_DELIVERY_ARCHITECTURE.md` – Detailed design explanations
+
+3. **README.md** (Navigation & Governance)
+   - Establishes single-authority pattern
+   - Links all documentation back to Issues.md for current status
+   - Documents maintenance rules for consistency
+
+### Maintenance Rules (CRITICAL)
+
+When implementation status changes:
+
+1. **Update Issues.md first** – Add completed item with `[COMPLETED - CATEGORY]` prefix or update Open status
+2. **Reflect architectural changes** in Architecture.md and supporting docs only after Issues.md is updated
+3. **Do NOT add status claims** in any file except Issues.md (prevents drift)
+4. **Link supporting docs** back to Issues.md for readers seeking current status
+5. **Preserve supporting docs** as stable technical references; update for design rationale only
+
+### Why This Pattern
+
+- **Prevents Drift**: Readers know to check one file for status
+- **Establishes Accountability**: Changes are traceable to Issues.md entries
+- **Enables Audit Trail**: master_project_audit_and_tasks.md reflects Issues.md resolution history
+- **Scales with Project**: Pattern remains consistent as documentation grows
+
+---
+
 ## Conclusion
+
 
 This architecture achieves:
 - ✅ **Strict hierarchical integrity** via FK constraints
@@ -828,3 +998,43 @@ This architecture achieves:
 - ✅ **Schema safety** via migrations + testing
 
 **Next Steps**: See Issues.md for current gaps and remediation roadmap.
+
+---
+
+## Appendix: Routing Standards
+
+### Static-First Rule (FastAPI)
+
+To prevent dynamic path parameters from shadowing fixed endpoints, all routers must follow this declaration order:
+
+1. Fixed/static paths first
+2. Static-prefix plus dynamic segment next
+3. Fully dynamic catch-all segments last
+
+Example for article router (`/articles`):
+
+```python
+@router.get("/tags/list")
+def list_all_tags(...):
+    ...
+
+@router.get("/recent/list")
+def get_recent_articles(...):
+    ...
+
+@router.get("/by-tag/{tag}")
+def get_articles_by_tag(...):
+    ...
+
+@router.get("/{article_id}")
+def get_article(article_id: int, ...):
+    ...
+```
+
+Why this standard is required:
+- FastAPI matches routes in declaration order.
+- If a dynamic route like `/{article_id}` appears above `/recent/list`, the literal `recent` can be parsed as `article_id` and fail integer validation.
+- Static-first ordering preserves 100% reachability for documented API paths.
+
+Scope:
+- Apply this pattern across all domain routers (`doha`, `dictionary`, `idiom`, `article`, and future modules).

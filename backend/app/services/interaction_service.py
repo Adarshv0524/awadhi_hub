@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, and_
 from app.db.models import (
     UserInteraction,
     ShareLog,
@@ -73,15 +73,64 @@ def list_user_interactions(
     limit: int = 50,
     offset: int = 0,
 ) -> Dict[str, Any]:
-    q = db.query(UserInteraction).filter(
+    filters = (
         UserInteraction.user_id == user_id,
         UserInteraction.interaction_type == interaction_type,
         UserInteraction.is_active == True,
     )
 
-    total_count = q.count()
+    total_count = db.query(func.count(UserInteraction.id)).filter(*filters).scalar() or 0
+
     rows = (
-        q.order_by(UserInteraction.created_at.desc())
+        db.query(
+            UserInteraction.id.label("id"),
+            UserInteraction.content_type.label("content_type"),
+            UserInteraction.content_id.label("content_id"),
+            UserInteraction.created_at.label("created_at"),
+            UserInteraction.updated_at.label("updated_at"),
+            UserInteraction.interaction_metadata.label("metadata"),
+            DohaEntry.main_text.label("doha_text"),
+            DohaEntry.meaning.label("doha_meaning"),
+            DictionaryEntry.lemma_devanagari.label("dict_lemma_devanagari"),
+            DictionaryEntry.lemma_roman.label("dict_lemma_roman"),
+            IdiomEntry.text_devanagari.label("idiom_text_devanagari"),
+            IdiomEntry.text_roman.label("idiom_text_roman"),
+            IdiomEntry.meaning.label("idiom_meaning"),
+            ArticleEntry.title.label("article_title"),
+            ArticleEntry.excerpt.label("article_excerpt"),
+            ArticleEntry.body.label("article_body"),
+        )
+        .outerjoin(
+            DohaEntry,
+            and_(
+                UserInteraction.content_type == "doha",
+                UserInteraction.content_id == DohaEntry.id,
+                DohaEntry.is_deleted == False,
+            ),
+        )
+        .outerjoin(
+            DictionaryEntry,
+            and_(
+                UserInteraction.content_type == "dictionary",
+                UserInteraction.content_id == DictionaryEntry.id,
+            ),
+        )
+        .outerjoin(
+            IdiomEntry,
+            and_(
+                UserInteraction.content_type == "idiom",
+                UserInteraction.content_id == IdiomEntry.id,
+            ),
+        )
+        .outerjoin(
+            ArticleEntry,
+            and_(
+                UserInteraction.content_type == "article",
+                UserInteraction.content_id == ArticleEntry.id,
+            ),
+        )
+        .filter(*filters)
+        .order_by(UserInteraction.created_at.desc())
         .offset(offset)
         .limit(limit)
         .all()
@@ -89,15 +138,32 @@ def list_user_interactions(
 
     results = []
     for r in rows:
-        preview = _build_content_preview(db, r.content_type, r.content_id)
+        if r.content_type == "doha":
+            title = (r.doha_text or "").strip() or f"doha #{r.content_id}"
+            snippet = (r.doha_meaning or r.doha_text or None)
+        elif r.content_type == "dictionary":
+            title = (r.dict_lemma_devanagari or r.dict_lemma_roman or "").strip() or f"dictionary #{r.content_id}"
+            snippet = None
+        elif r.content_type == "idiom":
+            title = (r.idiom_text_devanagari or r.idiom_text_roman or "").strip() or f"idiom #{r.content_id}"
+            snippet = r.idiom_meaning
+        elif r.content_type == "article":
+            title = (r.article_title or "").strip() or f"article #{r.content_id}"
+            snippet = r.article_excerpt or ((r.article_body or "")[:180] if r.article_body else None)
+        else:
+            title = f"{r.content_type} #{r.content_id}"
+            snippet = None
+
         results.append(
             {
+                "id": r.id,
                 "content_type": r.content_type,
                 "content_id": r.content_id,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-                "metadata": r.interaction_metadata,
-                "content_title": preview.get("content_title"),
-                "content_snippet": preview.get("content_snippet"),
+                "created_at": r.created_at,
+                "updated_at": r.updated_at,
+                "metadata": r.metadata,
+                "content_title": title,
+                "content_snippet": snippet,
             }
         )
 

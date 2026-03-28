@@ -1,7 +1,9 @@
 # tests/test_dictionary_idiom_article.py
 
 import uuid
-from app.db.models import Submission, DictionaryEntry, IdiomEntry, ArticleEntry, User
+from datetime import datetime, timedelta
+
+from app.db.models import Submission, DictionaryEntry, IdiomEntry, ArticleEntry, DohaEntry, EngagementKPI, User
 from app.auth.hash import hash_password
 from app.auth.jwt import create_access_token
 
@@ -184,6 +186,45 @@ def test_single_approve_idiom(client, db):
     ie = db.query(IdiomEntry).filter(IdiomEntry.source_submission_id == sub.id).first()
     assert ie is not None
     assert ie.text_devanagari == "अंधों में काना राजा"
+    assert ie.text_roman == "andhon mein kana raja"
+
+def test_idiom_submission_to_canonical_contract(client, db):
+    contributor = create_user(db, role="registered")
+    moderator = create_user(db, role="moderator")
+
+    contributor_token = create_access_token(contributor.id)
+    moderator_token = create_access_token(moderator.id)
+
+    submit_headers = {"Authorization": f"Bearer {contributor_token}"}
+    approve_headers = {"Authorization": f"Bearer {moderator_token}"}
+
+    create_payload = {
+        "content_type": "idiom",
+        "main_text": "आसमान से गिरा खजूर में अटका",
+        "meaning": "From one problem into another",
+        "external_references": {
+            "text_devanagari": "आसमान से गिरा खजूर में अटका",
+            "text_roman": "aasman se gira khajur mein atka",
+            "examples": ["वो नौकरी से निकला और कर्ज में फंस गया।"],
+        },
+        "visibility": "public",
+        "submit_for_review": True,
+    }
+
+    create_res = client.post("/submissions", json=create_payload, headers=submit_headers)
+    assert create_res.status_code == 200
+    submission_id = create_res.json()["id"]
+
+    approve_res = client.post(
+        f"/moderation/submissions/{submission_id}/approve",
+        json={"note": "Contract alignment check"},
+        headers=approve_headers,
+    )
+    assert approve_res.status_code in (200, 201)
+
+    idiom_entry = db.query(IdiomEntry).filter(IdiomEntry.source_submission_id == submission_id).first()
+    assert idiom_entry is not None
+    assert idiom_entry.text_roman == "aasman se gira khajur mein atka"
 
 def test_batch_approve_idiom(client, db):
     admin = create_user(db, role="admin")
@@ -280,13 +321,13 @@ def test_get_article(client, db):
     admin = create_user(db, role="admin")
     token = create_access_token(admin.id)
     headers = {"Authorization": f"Bearer {token}"}
-    
+
     sub = create_article_submission(db, admin.id)
     client.post(f"/moderation/submissions/{sub.id}/approve", json={}, headers=headers)
-    
+
     ae = db.query(ArticleEntry).filter(ArticleEntry.source_submission_id == sub.id).first()
     assert ae is not None
-    
+
     r = client.get(f"/articles/{ae.id}")
     assert r.status_code == 200
     data = r.json()
@@ -297,6 +338,87 @@ def test_get_article(client, db):
     assert data["likes_count"] >= 0
     assert data["shares_count"] >= 0
     assert data["bookmarks_count"] >= 0
+
+
+def test_articles_list_defaults_to_created_at_desc_and_supports_explicit_sort(client, db):
+    now = datetime.utcnow()
+    older = ArticleEntry(
+        title="Older Article",
+        body="older",
+        visibility="public",
+        tags=["sort-order-test"],
+        created_at=now - timedelta(days=2),
+        updated_at=now - timedelta(days=2),
+    )
+    newer = ArticleEntry(
+        title="Newer Article",
+        body="newer",
+        visibility="public",
+        tags=["sort-order-test"],
+        created_at=now - timedelta(hours=1),
+        updated_at=now - timedelta(hours=1),
+    )
+    db.add_all([older, newer])
+    db.commit()
+    db.refresh(older)
+    db.refresh(newer)
+
+    db.add_all([
+        EngagementKPI(content_type="article", content_id=older.id, views_count=100),
+        EngagementKPI(content_type="article", content_id=newer.id, views_count=10),
+    ])
+    db.commit()
+
+    default_resp = client.get("/articles", params={"tag": "sort-order-test", "limit": 2})
+    assert default_resp.status_code == 200
+    default_items = default_resp.json()
+    assert len(default_items) == 2
+    assert default_items[0]["id"] == newer.id
+    assert default_items[1]["id"] == older.id
+
+    views_sorted = client.get(
+        "/articles",
+        params={"tag": "sort-order-test", "sort": "views_count", "order": "desc", "limit": 2},
+    )
+    assert views_sorted.status_code == 200
+    views_items = views_sorted.json()
+    assert len(views_items) == 2
+    assert views_items[0]["id"] == older.id
+    assert views_items[1]["id"] == newer.id
+
+
+def test_doha_list_defaults_to_created_at_desc(client, db):
+    now = datetime.utcnow()
+    older = DohaEntry(
+        main_text="older doha",
+        status="active",
+        visibility="sort-order-test",
+        is_canonical=True,
+        is_deleted=False,
+        created_at=now - timedelta(days=3),
+        updated_at=now - timedelta(days=3),
+    )
+    newer = DohaEntry(
+        main_text="newer doha",
+        status="active",
+        visibility="sort-order-test",
+        is_canonical=True,
+        is_deleted=False,
+        created_at=now - timedelta(minutes=30),
+        updated_at=now - timedelta(minutes=30),
+    )
+    db.add_all([older, newer])
+    db.commit()
+    db.refresh(older)
+    db.refresh(newer)
+
+    resp = client.get("/content/doha", params={"visibility": "sort-order-test", "limit": 2})
+    assert resp.status_code == 200
+    items = resp.json()
+    assert len(items) == 2
+    assert items[0]["id"] == newer.id
+    assert items[1]["id"] == older.id
+
 
 # Batch approve atomic abort test
 def test_batch_approve_atomic_abort(client, db):

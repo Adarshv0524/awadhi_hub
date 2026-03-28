@@ -1,25 +1,28 @@
 # app/api/v1/content.py
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import and_
+from sqlalchemy import and_, asc, desc
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.db.models import (
     DohaEntry,
+    DictionaryEntry,
+    IdiomEntry,
+    ArticleEntry,
     ContentVersion,
     ClassicalAuthor,
     ClassicalWork,
     WorkChapter,
     EngagementKPI,
 )
-from app.schemas.content_navigation import DohaNavigationOut
+from app.schemas.content_navigation import ContentNavigationOut
 from app.schemas.content_chapter import ChapterDohaItem, ChapterDohasOut
-from app.services.content_service import get_doha_navigation
+from app.services.content_service import get_content_navigation
 
 router = APIRouter(prefix="/content", tags=["content"])
 
@@ -45,14 +48,15 @@ class DohaOut(BaseModel):
     confidence_level: Optional[int]
     source_reference: Optional[dict]
     verified_by: Optional[int]
-    verified_at: Optional[datetime]
-    created_at: Optional[datetime]
-    updated_at: Optional[datetime]
+    verified_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     views_count: int = 0
     likes_count: int = 0
     shares_count: int = 0
     bookmarks_count: int = 0
     search_hits_count: int = 0
+    weight_score: float = 0.0
 
     class Config:
         orm_mode = True
@@ -85,6 +89,7 @@ def _doha_query_with_metadata(db: Session):
             EngagementKPI.shares_count.label("shares_count"),
             EngagementKPI.bookmarks_count.label("bookmarks_count"),
             EngagementKPI.search_hits_count.label("search_hits_count"),
+            EngagementKPI.weight_score.label("weight_score"),
         )
         .outerjoin(ClassicalAuthor, ClassicalAuthor.id == DohaEntry.author_id)
         .outerjoin(ClassicalWork, ClassicalWork.id == DohaEntry.work_id)
@@ -110,6 +115,7 @@ def _serialize_doha_with_metadata(row) -> dict:
         shares_count,
         bookmarks_count,
         search_hits_count,
+        weight_score,
     ) = row
 
     return {
@@ -141,6 +147,7 @@ def _serialize_doha_with_metadata(row) -> dict:
         "shares_count": shares_count or 0,
         "bookmarks_count": bookmarks_count or 0,
         "search_hits_count": search_hits_count or 0,
+        "weight_score": weight_score or 0.0,
     }
 
 
@@ -192,6 +199,17 @@ def list_dohas(
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     visibility: Optional[str] = Query(None),
+    sort: Literal[
+        "created_at",
+        "updated_at",
+        "views_count",
+        "likes_count",
+        "shares_count",
+        "bookmarks_count",
+        "search_hits_count",
+        "weight_score",
+    ] = Query("created_at"),
+    order: Literal["asc", "desc"] = Query("desc"),
 ):
     """
     List canonical doha entries (for now mostly for debugging / browsing).
@@ -203,7 +221,20 @@ def list_dohas(
     if visibility:
         q = q.filter(DohaEntry.visibility == visibility)
 
-    rows = q.order_by(DohaEntry.created_at.asc()).offset(offset).limit(limit).all()
+    sort_columns = {
+        "created_at": DohaEntry.created_at,
+        "updated_at": DohaEntry.updated_at,
+        "views_count": EngagementKPI.views_count,
+        "likes_count": EngagementKPI.likes_count,
+        "shares_count": EngagementKPI.shares_count,
+        "bookmarks_count": EngagementKPI.bookmarks_count,
+        "search_hits_count": EngagementKPI.search_hits_count,
+        "weight_score": EngagementKPI.weight_score,
+    }
+    order_fn = desc if order == "desc" else asc
+    sort_col = sort_columns[sort]
+
+    rows = q.order_by(order_fn(sort_col), DohaEntry.id.desc()).offset(offset).limit(limit).all()
     return [_serialize_doha_with_metadata(row) for row in rows]
 
 
@@ -226,10 +257,25 @@ def get_doha(doha_id: int, db: Session = Depends(get_db)):
     return _serialize_doha_with_metadata(row)
 
 
-@router.get("/doha/{doha_id}/navigation", response_model=DohaNavigationOut)
+@router.get("/doha/{doha_id}/navigation", response_model=ContentNavigationOut)
 def get_doha_navigation_endpoint(doha_id: int, db: Session = Depends(get_db)):
     """Return previous/current/next doha cards based on chapter sequence."""
-    return get_doha_navigation(db, doha_id)
+    return get_content_navigation(db, "doha", doha_id)
+
+
+@router.get("/dictionary/{entry_id}/navigation", response_model=ContentNavigationOut)
+def get_dictionary_navigation_endpoint(entry_id: int, db: Session = Depends(get_db)):
+    return get_content_navigation(db, "dictionary", entry_id)
+
+
+@router.get("/idiom/{entry_id}/navigation", response_model=ContentNavigationOut)
+def get_idiom_navigation_endpoint(entry_id: int, db: Session = Depends(get_db)):
+    return get_content_navigation(db, "idiom", entry_id)
+
+
+@router.get("/article/{entry_id}/navigation", response_model=ContentNavigationOut)
+def get_article_navigation_endpoint(entry_id: int, db: Session = Depends(get_db)):
+    return get_content_navigation(db, "article", entry_id)
 
 
 @router.get("/chapters/{chapter_id}/dohas", response_model=ChapterDohasOut)

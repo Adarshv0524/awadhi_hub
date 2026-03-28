@@ -51,9 +51,17 @@ const safeEngagement = {
 // ✅ DEFENSIVE: Author/work names fallback
 const authorDisplay = doha.author_name || (doha.author_id ? `Author #${doha.author_id}` : 'Unknown Author');
 const workDisplay = doha.work_name || (doha.work_id ? `Work #${doha.work_id}` : null);
+const dohaDescription =
+  doha.meaning
+    ? String(doha.meaning).slice(0, 160)
+    : `Doha by ${authorDisplay} on Awadhi New`;
 ---
 
-<BaseLayout title={`${doha.main_text} · Awadhi New`}>
+<BaseLayout
+  title={`${doha.main_text} · Awadhi New`}
+  description={dohaDescription}
+  canonicalURL={dohaUrl}
+>
   <head>
     <!-- Structured Data for Doha (Creative Work) -->
     <StructuredData 

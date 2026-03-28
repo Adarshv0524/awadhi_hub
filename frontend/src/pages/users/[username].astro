@@ -9,12 +9,10 @@ import UserStats from "../../components/user/UserStats.svelte";
 
 const { username } = Astro.params;
 
-// Check if viewing own profile
-const currentUser = Astro.locals.user; // From auth middleware
-const isOwnProfile = currentUser && currentUser.username === username;
-
 let user: any = null;
 let error: string | null = null;
+let stats: any = null;
+let statsError: string | null = null;
 
 try {
   user = await api(`/users/${username}`);
@@ -29,14 +27,16 @@ try {
   }
 }
 
-// Dummy stats implementation (TODO: Backend API needed)
-// GitHub Issue: Add GET /users/:username/stats endpoint
-// Should return: { public_submissions: number, approved_count: number, likes_received: number }
-const dummyStats = {
-  public_submissions: 0,  // Count of approved public submissions
-  approved_count: 0,      // Count of approved content
-  likes_received: 0       // Total likes on user's approved content
-};
+if (user) {
+  try {
+    stats = await api(`/users/${username}/stats`);
+  } catch (e) {
+    statsError = "Failed to load contribution statistics";
+    if (import.meta.env.DEV) {
+      console.error("[User Profile] Stats Error:", e);
+    }
+  }
+}
 
 // SEO metadata
 const title = user ? `${user.username} · Awadhi New` : `User ${username} · Awadhi New`;
@@ -112,7 +112,11 @@ const description = user
             Public Contributions
           </h2>
           
-          <UserStats client:load username={user.username} isOwnProfile={isOwnProfile} />
+          <UserStats
+            client:load
+            stats={stats}
+            error={statsError}
+          />
           
           <!-- Note about stats -->
           <div class="mt-6 p-4 bg-blue-900/20 border border-blue-800/30 rounded-lg">

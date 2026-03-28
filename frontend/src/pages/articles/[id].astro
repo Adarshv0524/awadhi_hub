@@ -46,11 +46,8 @@ const baseUrl = import.meta.env.SITE || "https://awadhi.new";
 const articleUrl = `${baseUrl}/articles/${id}`;
 ---
 
-<BaseLayout title={title}>
+<BaseLayout title={title} description={description} canonicalURL={articleUrl}>
   <head>
-    <link rel="canonical" href={articleUrl} />
-    <meta name="description" content={description} />
-    
     <!-- Structured Data for Article -->
     <StructuredData 
       type="Article" 

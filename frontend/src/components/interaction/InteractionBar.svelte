@@ -1,7 +1,7 @@
 <!-- src/components/interaction/InteractionBar.svelte -->
 <!-- Lightweight, reusable interaction bar for all content types -->
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, onDestroy, tick } from "svelte";
   import {
     toggleInteraction,
     shareContent,
@@ -12,11 +12,27 @@
   // Props: content identification
   export let contentType: string; // 'doha' | 'dictionary' | 'idiom' | 'article'
   export let contentId: number;
+  export let content:
+    | {
+        likes_count?: number;
+        views_count?: number;
+        shares_count?: number;
+        bookmarks_count?: number;
+      }
+    | null = null;
 
   // Props: initial counts from SSR
   export let likes = 0;
+  export let views = 0;
   export let bookmarks = 0;
   export let shares = 0;
+
+  function applyContentCounts() {
+    likes = content?.likes_count ?? likes ?? 0;
+    views = content?.views_count ?? views ?? 0;
+    shares = content?.shares_count ?? shares ?? 0;
+    bookmarks = content?.bookmarks_count ?? bookmarks ?? 0;
+  }
 
   // Local state: user's interaction status
   let liked = false;
@@ -29,26 +45,9 @@
   let reportNote = "";
   let copySuccess = false;
   let shareLink = "";
-
-  // ✅ Restore state from localStorage on mount
-  onMount(() => {
-    if (typeof window !== "undefined") {
-      const key = `int_${contentType}_${contentId}`;
-      const stored = localStorage.getItem(key);
-      if (stored) {
-        try {
-          const data = JSON.parse(stored);
-          liked = data.liked ?? false;
-          bookmarked = data.bookmarked ?? false;
-          likes = data.likes ?? likes;
-          bookmarks = data.bookmarks ?? bookmarks;
-          shares = data.shares ?? shares;
-        } catch (e) {
-          console.error("[InteractionBar] Failed to restore state:", e);
-        }
-      }
-    }
-  });
+  let reportDialogEl: HTMLDivElement | null = null;
+  let reportReasonSelectEl: HTMLSelectElement | null = null;
+  let lastFocusedElement: HTMLElement | null = null;
 
   // ✅ Save state to localStorage
   function saveState() {
@@ -56,7 +55,7 @@
       const key = `int_${contentType}_${contentId}`;
       localStorage.setItem(
         key,
-        JSON.stringify({ liked, bookmarked, likes, bookmarks, shares })
+        JSON.stringify({ liked, bookmarked, likes, views, bookmarks, shares })
       );
     }
   }
@@ -208,6 +207,7 @@
     if (typeof window !== "undefined") {
       // Restore state
       const key = `int_${contentType}_${contentId}`;
+      applyContentCounts();
       const stored = localStorage.getItem(key);
       if (stored) {
         try {
@@ -215,6 +215,7 @@
           liked = data.liked ?? false;
           bookmarked = data.bookmarked ?? false;
           likes = data.likes ?? likes;
+          views = data.views ?? views;
           bookmarks = data.bookmarks ?? bookmarks;
           shares = data.shares ?? shares;
         } catch (e) {
@@ -224,14 +225,22 @@
 
       // Add click outside listener
       document.addEventListener("click", handleClickOutside);
-      return () => {
-        document.removeEventListener("click", handleClickOutside);
-      };
+      document.addEventListener("keydown", handleModalKeydown);
+    }
+  });
+
+  onDestroy(() => {
+    if (typeof window !== "undefined") {
+      document.removeEventListener("click", handleClickOutside);
+      document.removeEventListener("keydown", handleModalKeydown);
     }
   });
 
   // ✅ Report content
   function openReportModal() {
+    if (typeof document !== "undefined") {
+      lastFocusedElement = document.activeElement as HTMLElement | null;
+    }
     showReportModal = true;
     reportReason = "";
     reportNote = "";
@@ -241,6 +250,51 @@
     showReportModal = false;
     reportReason = "";
     reportNote = "";
+    if (lastFocusedElement) {
+      lastFocusedElement.focus();
+      lastFocusedElement = null;
+    }
+  }
+
+  function handleModalKeydown(event: KeyboardEvent) {
+    if (!showReportModal || !reportDialogEl) return;
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeReportModal();
+      return;
+    }
+
+    if (event.key !== "Tab") return;
+
+    const focusable = Array.from(
+      reportDialogEl.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+    );
+
+    if (focusable.length === 0) {
+      event.preventDefault();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement as HTMLElement | null;
+
+    if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    } else if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+    }
+  }
+
+  $: if (showReportModal) {
+    tick().then(() => {
+      reportReasonSelectEl?.focus();
+    });
   }
 
   async function submitReport() {
@@ -261,8 +315,18 @@
 </script>
 
 <div class="flex items-center gap-4 text-sm mt-4 flex-wrap">
+  <div
+    class="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-600 bg-slate-800 text-slate-300"
+    aria-label="Views"
+    title="Views"
+  >
+    <span class="text-lg leading-none">👁</span>
+    <span class="font-medium leading-none">{views ?? 0}</span>
+  </div>
+
   <!-- Like button -->
   <button
+    type="button"
     disabled={busy}
     on:click={() => toggle("like")}
     class="flex items-center gap-2 px-3 py-2 rounded-lg border transition-all hover:scale-105"
@@ -273,7 +337,7 @@
     class:bg-slate-800={!liked}
     class:text-slate-300={!liked}
     class:opacity-50={busy}
-    aria-label={liked ? "Unlike" : "Like"}
+    aria-label={liked ? `Unlike this ${contentType}` : `Like this ${contentType}`}
   >
     <span class="text-lg">{liked ? "❤️" : "🤍"}</span>
     <span class="font-medium">{likes}</span>
@@ -281,6 +345,7 @@
 
   <!-- Bookmark button -->
   <button
+    type="button"
     disabled={busy}
     on:click={() => toggle("bookmark")}
     class="flex items-center gap-2 px-3 py-2 rounded-lg border transition-all hover:scale-105"
@@ -291,7 +356,7 @@
     class:bg-slate-800={!bookmarked}
     class:text-slate-300={!bookmarked}
     class:opacity-50={busy}
-    aria-label={bookmarked ? "Remove bookmark" : "Bookmark"}
+    aria-label={bookmarked ? `Remove bookmark from this ${contentType}` : `Bookmark this ${contentType}`}
   >
     <span class="text-lg">{bookmarked ? "🔖" : "📑"}</span>
     <span class="font-medium">{bookmarks}</span>
@@ -300,11 +365,12 @@
   <!-- Share button with dropdown menu -->
   <div class="relative share-container">
     <button
+      type="button"
       on:click={toggleShareMenu}
       class="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-600 bg-slate-800 text-slate-300 transition-all hover:border-indigo-400 hover:scale-105"
       class:border-indigo-400={showShareMenu}
       class:bg-indigo-900={showShareMenu}
-      aria-label="Share"
+      aria-label={`Share this ${contentType}`}
       aria-expanded={showShareMenu}
     >
       <span class="text-lg">🔗</span>
@@ -326,6 +392,7 @@
               on:click={(e) => e.currentTarget.select()}
             />
             <button
+              type="button"
               on:click={() => share("copy")}
               class:bg-green-900={copySuccess}
               class:border-green-600={copySuccess}
@@ -343,8 +410,9 @@
         <div class="text-xs text-slate-400 px-3 py-2 font-medium uppercase tracking-wide border-t border-slate-700">Share via</div>
         
         <!-- Native share (mobile) -->
-        {#if typeof navigator !== "undefined" && navigator.share}
+        {#if typeof navigator !== "undefined" && typeof navigator.share === "function"}
           <button
+            type="button"
             on:click={() => share("native")}
             class="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-slate-700 transition-colors text-left"
           >
@@ -355,6 +423,7 @@
 
         <!-- WhatsApp -->
         <button
+          type="button"
           on:click={() => share("whatsapp")}
           class="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-green-900/30 transition-colors text-left"
         >
@@ -366,6 +435,7 @@
 
         <!-- Twitter/X -->
         <button
+          type="button"
           on:click={() => share("twitter")}
           class="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-blue-900/30 transition-colors text-left"
         >
@@ -377,6 +447,7 @@
 
         <!-- Facebook -->
         <button
+          type="button"
           on:click={() => share("facebook")}
           class="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-blue-900/30 transition-colors text-left"
         >
@@ -388,6 +459,7 @@
 
         <!-- Telegram -->
         <button
+          type="button"
           on:click={() => share("telegram")}
           class="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-blue-900/30 transition-colors text-left"
         >
@@ -399,6 +471,7 @@
 
         <!-- LinkedIn -->
         <button
+          type="button"
           on:click={() => share("linkedin")}
           class="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-blue-900/30 transition-colors text-left"
         >
@@ -410,6 +483,7 @@
 
         <!-- Email -->
         <button
+          type="button"
           on:click={() => share("email")}
           class="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-slate-700 transition-colors text-left"
         >
@@ -422,9 +496,10 @@
 
   <!-- Report button -->
   <button
+    type="button"
     on:click={openReportModal}
     class="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-600 bg-slate-800 text-slate-300 transition-all hover:border-red-400 hover:scale-105"
-    aria-label="Report"
+    aria-label={`Report this ${contentType}`}
   >
     <span class="text-lg">⚠️</span>
     <span class="font-medium">Report</span>
@@ -437,17 +512,29 @@
 
 <!-- Report Modal -->
 {#if showReportModal}
-  <div class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" on:click={closeReportModal}>
-    <div class="bg-slate-800 rounded-lg shadow-2xl max-w-md w-full border border-slate-600" on:click|stopPropagation>
+  <div class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+    <button
+      type="button"
+      class="absolute inset-0 w-full h-full cursor-default"
+      aria-label="Close report dialog"
+      on:click={closeReportModal}
+    ></button>
+    <div
+      class="bg-slate-800 rounded-lg shadow-2xl max-w-md w-full border border-slate-600 relative"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="report-modal-title"
+      bind:this={reportDialogEl}
+    >
       <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
-        <h3 class="text-lg font-semibold text-slate-100">Report Content</h3>
-        <button on:click={closeReportModal} class="text-slate-400 hover:text-slate-200 text-2xl leading-none">&times;</button>
+        <h3 id="report-modal-title" class="text-lg font-semibold text-slate-100">Report Content</h3>
+        <button type="button" on:click={closeReportModal} class="text-slate-400 hover:text-slate-200 text-2xl leading-none" aria-label="Close report dialog">&times;</button>
       </div>
       
       <div class="px-6 py-4 space-y-4">
         <div>
-          <label class="block text-sm font-medium text-slate-300 mb-2">Reason for reporting</label>
-          <select bind:value={reportReason} class="w-full bg-slate-900 border border-slate-600 text-slate-200 px-3 py-2 rounded focus:border-cyan-400 focus:outline-none">
+          <label for="report-reason" class="block text-sm font-medium text-slate-300 mb-2">Reason for reporting</label>
+          <select id="report-reason" bind:value={reportReason} bind:this={reportReasonSelectEl} class="w-full bg-slate-900 border border-slate-600 text-slate-200 px-3 py-2 rounded focus:border-cyan-400 focus:outline-none">
             <option value="">Select a reason...</option>
             <option value="spam">Spam or misleading</option>
             <option value="abuse">Abusive or harmful</option>
@@ -457,8 +544,9 @@
         </div>
         
         <div>
-          <label class="block text-sm font-medium text-slate-300 mb-2">Additional details (optional)</label>
+          <label for="report-note" class="block text-sm font-medium text-slate-300 mb-2">Additional details (optional)</label>
           <textarea 
+            id="report-note"
             bind:value={reportNote} 
             placeholder="Provide more context..." 
             rows="3"
@@ -469,12 +557,14 @@
 
       <div class="px-6 py-4 border-t border-slate-700 flex gap-3 justify-end">
         <button 
+          type="button"
           on:click={closeReportModal}
           class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded transition-colors"
         >
           Cancel
         </button>
         <button 
+          type="button"
           on:click={submitReport}
           class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded transition-colors font-medium"
         >
