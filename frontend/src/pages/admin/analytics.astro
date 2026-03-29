@@ -1,40 +1,37 @@
 ---
 // src/pages/admin/analytics.astro
 import AdminLayout from "../../layouts/AdminLayout.astro";
-import AuthGuard from "../../components/auth/AuthGuard.astro";
 
 import AnalyticsTop from "../../components/admin/AnalyticsTop.svelte";
 import AnalyticsGrowth from "../../components/admin/AnalyticsGrowth.svelte";
 import AnalyticsDemand from "../../components/admin/AnalyticsDemand.svelte";
 import AnalyticsStats from "../../components/admin/AnalyticsStats.svelte";
 import SystemInfo from "../../components/admin/SystemInfo.svelte";
+import SummaryKpiCards from "../../components/admin/SummaryKpiCards.svelte";
+import OperationalDashboard from "../../components/admin/OperationalDashboard.svelte";
+import Investigation3D from "../../components/admin/Investigation3D.svelte";
 
 export const prerender = false;
-const API_BASE = import.meta.env.PUBLIC_API_BASE ?? "";
+const API_BASE = import.meta.env.PUBLIC_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : "");
 ---
 <AdminLayout title="Analytics · Admin">
-  <!-- Client-side guard: will redirect if not logged in or low role -->
-  <AuthGuard apiBase={API_BASE} minRole="admin" client:load />
-
   <div class="max-w-7xl mx-auto px-4 py-8">
     <!-- Header -->
     <div class="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
       <div>
-        <h1 class="text-3xl font-serif font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-indigo-400 bg-clip-text text-transparent">
-          Analytics Dashboard
-        </h1>
-        <p class="text-slate-400 mt-2">Platform performance, engagement metrics, and growth trends</p>
+        <h1 class="admin-page-title">Analytics Dashboard</h1>
+        <p class="admin-page-subtitle mt-2">Platform performance, engagement metrics, and growth trends</p>
       </div>
       <div class="flex gap-2">
         <a
           href="/admin/audit"
-          class="px-4 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 rounded text-sm transition-colors flex items-center gap-2"
+          class="admin-btn flex items-center gap-2"
         >
           📋 Audit Logs
         </a>
         <a
           href="/admin"
-          class="px-4 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 rounded text-sm transition-colors flex items-center gap-2"
+          class="admin-btn flex items-center gap-2"
         >
           ← Back to Admin
         </a>
@@ -43,7 +40,19 @@ const API_BASE = import.meta.env.PUBLIC_API_BASE ?? "";
 
     <!-- Platform Statistics Overview -->
     <div class="mb-8">
+      <SummaryKpiCards title="Global Platform Summary" useAdminSummary={true} client:load />
+    </div>
+
+    <div class="mb-8">
       <AnalyticsStats apiBase={API_BASE} client:load />
+    </div>
+
+    <div class="mb-8">
+      <OperationalDashboard client:load />
+    </div>
+
+    <div class="mb-8">
+      <Investigation3D client:load />
     </div>
 
     <!-- Main Analytics Grid -->
@@ -51,9 +60,9 @@ const API_BASE = import.meta.env.PUBLIC_API_BASE ?? "";
       <!-- Row 1: Top Content + Demand Distribution -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Top Content - Takes 2 columns -->
-        <section class="lg:col-span-2 bg-slate-800 border border-slate-700 rounded-lg p-6 shadow-lg">
+        <section class="admin-panel lg:col-span-2 p-6">
           <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-semibold text-cyan-400 flex items-center gap-2">
+            <h2 class="text-xl font-semibold text-slate-200 flex items-center gap-2">
               🏆 Top Performing Content
             </h2>
           </div>
@@ -61,9 +70,9 @@ const API_BASE = import.meta.env.PUBLIC_API_BASE ?? "";
         </section>
 
         <!-- Demand Distribution - Takes 1 column -->
-        <section class="bg-slate-800 border border-slate-700 rounded-lg p-6 shadow-lg">
+        <section class="admin-panel p-6">
           <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-semibold text-indigo-400 flex items-center gap-2">
+            <h2 class="text-xl font-semibold text-slate-200 flex items-center gap-2">
               🔍 Search Demand
             </h2>
           </div>
@@ -72,9 +81,9 @@ const API_BASE = import.meta.env.PUBLIC_API_BASE ?? "";
       </div>
 
       <!-- Row 2: Growth Trends - Full width -->
-      <section class="bg-slate-800 border border-slate-700 rounded-lg p-6 shadow-lg">
+      <section class="admin-panel p-6">
         <div class="flex items-center justify-between mb-4">
-          <h2 class="text-xl font-semibold text-blue-400 flex items-center gap-2">
+          <h2 class="text-xl font-semibold text-slate-200 flex items-center gap-2">
             📈 Growth Trends (Last 30 Days)
           </h2>
         </div>

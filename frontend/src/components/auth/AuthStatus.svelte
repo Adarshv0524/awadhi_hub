@@ -15,6 +15,17 @@
   let dropdownOpen = false;
   let errorMsg = "";
 
+  const adminLinks = [
+    { href: "/admin", label: "Admin" },
+    { href: "/moderation", label: "Moderation" },
+  ];
+
+  const moderatorLinks = [{ href: "/moderation", label: "Moderation" }];
+
+  $: roleKey = String(user?.role || "").toLowerCase();
+  $: roleLinks = roleKey === "admin" ? adminLinks : roleKey === "moderator" ? moderatorLinks : [];
+  $: showRoleLinks = roleLinks.length > 0;
+
   function clearAuthCache() {
     try {
       localStorage.removeItem("awadhi_access_token");
@@ -96,7 +107,7 @@
 <style>
   /* small local styles; tailwind exists but keep fallback */
   .username-btn { cursor: pointer; }
-  .dropdown { min-width: 180px; }
+  .dropdown { min-width: 220px; }
 </style>
 
 {#if loading}
@@ -109,48 +120,44 @@
       <span></span>
     {:else}
       <div class="flex items-center gap-3 auth-status-root">
-        <a href="/login" class="hover:underline">Login</a>
-        <a href="/register" class="hover:underline">Register</a>
+        <a href="/login" class="site-nav-link">Login</a>
+        <a href="/register" class="site-nav-link">Register</a>
       </div>
     {/if}
   {:else}
     <!-- logged in -->
     {#if minimal}
       <!-- footer-only: show role text with badge styling -->
-      <div class="text-xs font-bold px-3 py-1 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg">
+      <div class="ui-badge" data-tone="accent">
         {user.role ? user.role.toUpperCase() : "USER"}
       </div>
     {:else}
-      <div class="flex items-center gap-4 auth-status-root">
-        <!-- role-based quick links -->
-        <nav class="hidden md:flex items-center gap-3" aria-label="role links">
-          {#if user.role === "moderator" || user.role === "admin"}
-            <a href="/moderation" class="hover:underline">Moderation</a>
-          {/if}
-          {#if user.role === "admin"}
-            <a href="/admin" class="hover:underline">Admin</a>
-          {/if}
-          <a href="/dashboard" class="hover:underline">Dashboard</a>
-        </nav>
-
+      <div class="flex items-center gap-4 auth-status-root relative z-layer-dropdown">
         <!-- username dropdown -->
         <div class="relative">
-          <button class="username-btn text-sm" on:click={toggleDropdown} aria-haspopup="true" aria-expanded={dropdownOpen}>
+          <button class="username-btn text-sm site-nav-link" on:click={toggleDropdown} aria-haspopup="true" aria-expanded={dropdownOpen}>
             {displayName(user)}
             <span class="ml-2">▾</span>
           </button>
 
           {#if dropdownOpen}
-            <div class="absolute right-0 mt-2 bg-white border shadow dropdown z-50 p-2 rounded">
-              <div class="text-sm text-stone-700 mb-2">
+            <div class="absolute right-0 mt-2 auth-dropdown dropdown p-2">
+              <div class="text-sm text-fg mb-2">
                 <strong>{displayName(user)}</strong><br />
-                <span class="text-xs text-stone-500">{user.role || "user"}</span>
+                <span class="text-xs text-muted">{user.role || "user"}</span>
               </div>
 
               <div class="flex flex-col gap-2">
-                <a class="hover:underline" href="/dashboard">Dashboard</a>
-                <a class="hover:underline" href="/me/edit">Edit profile</a>
-                <button on:click={logout} class="text-left hover:underline">Sign out</button>
+                <a class="auth-menu-link" href="/dashboard">Dashboard</a>
+                <a class="auth-menu-link" href="/me/edit">Edit profile</a>
+                {#if showRoleLinks}
+                  <div class="border-t border-slate-700/60 my-1"></div>
+                  <div class="text-xs text-muted uppercase tracking-wide px-2">Manage</div>
+                  {#each roleLinks as link}
+                    <a class="auth-menu-link" href={link.href}>{link.label}</a>
+                  {/each}
+                {/if}
+                <button on:click={logout} class="auth-menu-link danger text-left">Sign out</button>
               </div>
             </div>
           {/if}

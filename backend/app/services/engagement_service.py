@@ -27,6 +27,7 @@ def _get_or_create_kpi(db: Session, content_type: str, content_id: int) -> Engag
             views_count=0,
             search_hits_count=0,
             likes_count=0,
+            bookmarks_count=0,
             shares_count=0,
         )
         db.add(kpi)
@@ -75,7 +76,7 @@ def record_search_hits(db: Session, content_type: str, content_id_or_ids, increm
                 # If no row updated, INSERT
                 if res.rowcount == 0:
                     db.execute(
-                        text("INSERT INTO engagement_kpis (content_type, content_id, views_count, search_hits_count, likes_count, shares_count, weight_score, updated_at) VALUES (:ct, :cid, 0, :inc, 0, 0, 0.0, CURRENT_TIMESTAMP)"),
+                        text("INSERT INTO engagement_kpis (content_type, content_id, views_count, search_hits_count, likes_count, bookmarks_count, shares_count, weight_score, updated_at) VALUES (:ct, :cid, 0, :inc, 0, 0, 0, 0.0, CURRENT_TIMESTAMP)"),
                         {"ct": content_type, "cid": cid, "inc": increment}
                     )
             db.commit()
@@ -90,7 +91,7 @@ def record_search_hits(db: Session, content_type: str, content_id_or_ids, increm
         values_sql_parts = []
         params = {}
         for idx, cid in enumerate(ids):
-            values_sql_parts.append(f"(:ct{idx}, :cid{idx}, 0, :inc{idx}, 0, 0, 0.0, NOW())")
+            values_sql_parts.append(f"(:ct{idx}, :cid{idx}, 0, :inc{idx}, 0, 0, 0, 0.0, NOW())")
             params[f"ct{idx}"] = content_type
             params[f"cid{idx}"] = cid
             params[f"inc{idx}"] = increment
@@ -99,7 +100,7 @@ def record_search_hits(db: Session, content_type: str, content_id_or_ids, increm
 
         sql = text(f"""
             INSERT INTO engagement_kpis
-                (content_type, content_id, views_count, search_hits_count, likes_count, shares_count, weight_score, updated_at)
+                (content_type, content_id, views_count, search_hits_count, likes_count, bookmarks_count, shares_count, weight_score, updated_at)
             VALUES
             {values_sql}
             ON DUPLICATE KEY UPDATE

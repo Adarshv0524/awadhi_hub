@@ -10,7 +10,29 @@
     backend: { loading: true, healthy: false, error: "" },
   };
 
-  function getAuthHeader() {
+  function resolveApiBase(): string {
+    if (apiBase && apiBase.trim()) return apiBase.trim();
+    return import.meta.env.DEV ? "http://localhost:8000" : "";
+  }
+
+  function fallbackApiBase(base: string): string | null {
+    if (base.includes("localhost")) return base.replace("localhost", "127.0.0.1");
+    if (base.includes("127.0.0.1")) return base.replace("127.0.0.1", "localhost");
+    return null;
+  }
+
+  async function fetchWithBaseFallback(path: string, init?: RequestInit): Promise<Response> {
+    const primary = resolveApiBase();
+    try {
+      return await fetch(`${primary}${path}`, init);
+    } catch (e) {
+      const fallback = fallbackApiBase(primary);
+      if (!fallback) throw e;
+      return await fetch(`${fallback}${path}`, init);
+    }
+  }
+
+  function getAuthHeader(): Record<string, string> {
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("awadhi_access_token") : null;
       return token ? { Authorization: `Bearer ${token}` } : {};
@@ -22,7 +44,7 @@
   async function checkBackend() {
     status.backend.loading = true;
     try {
-      const res = await fetch(`${apiBase}/health`);
+      const res = await fetchWithBaseFallback(`/health`);
       status.backend.healthy = res.ok;
       if (!res.ok) {
         status.backend.error = `Backend returned ${res.status}`;
@@ -38,7 +60,7 @@
   async function checkAuthors() {
     status.authors.loading = true;
     try {
-      const res = await fetch(`${apiBase}/authors?limit=1`, { headers: { ...getAuthHeader() }});
+      const res = await fetchWithBaseFallback(`/authors?limit=1`, { headers: { ...getAuthHeader() }});
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const data = await res.json();
       status.authors.count = Array.isArray(data) ? data.length : 0;
@@ -52,7 +74,7 @@
   async function checkUsers() {
     status.users.loading = true;
     try {
-      const res = await fetch(`${apiBase}/admin/users?limit=1`, { headers: { ...getAuthHeader() }});
+      const res = await fetchWithBaseFallback(`/admin/users?limit=1`, { headers: { ...getAuthHeader() }});
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const data = await res.json();
       status.users.count = Array.isArray(data) ? data.length : 0;
@@ -66,7 +88,7 @@
   async function checkSettings() {
     status.settings.loading = true;
     try {
-      const res = await fetch(`${apiBase}/admin/system_settings`, { headers: { ...getAuthHeader() }});
+      const res = await fetchWithBaseFallback(`/admin/system_settings`, { headers: { ...getAuthHeader() }});
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const data = await res.json();
       status.settings.count = Array.isArray(data) ? data.length : 0;
@@ -80,7 +102,7 @@
   async function checkAuditLogs() {
     status.auditLogs.loading = true;
     try {
-      const res = await fetch(`${apiBase}/admin/audit_logs?limit=1`, { headers: { ...getAuthHeader() }});
+      const res = await fetchWithBaseFallback(`/admin/audit_logs?limit=1`, { headers: { ...getAuthHeader() }});
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const data = await res.json();
       status.auditLogs.count = data?.total || (data?.results?.length ?? 0);
@@ -100,67 +122,67 @@
   });
 </script>
 
-<div class="p-4 border rounded bg-stone-50">
+<div class="admin-panel p-4">
   <h3 class="font-semibold mb-3">System Status</h3>
   <div class="space-y-2 text-sm">
     <div class="flex justify-between items-center">
       <span>Backend Health:</span>
       {#if status.backend.loading}
-        <span class="text-stone-500">Checking...</span>
+        <span class="text-slate-500">Checking...</span>
       {:else if status.backend.healthy}
-        <span class="text-green-600 font-medium">✓ Healthy</span>
+        <span class="admin-state-ok font-medium">Healthy</span>
       {:else}
-        <span class="text-red-600 font-medium">✗ {status.backend.error}</span>
+        <span class="admin-state-bad font-medium">{status.backend.error}</span>
       {/if}
     </div>
 
     <div class="flex justify-between items-center">
       <span>Authors Endpoint:</span>
       {#if status.authors.loading}
-        <span class="text-stone-500">Checking...</span>
+        <span class="text-slate-500">Checking...</span>
       {:else if status.authors.error}
-        <span class="text-red-600 text-xs">{status.authors.error}</span>
+        <span class="admin-state-bad text-xs">{status.authors.error}</span>
       {:else}
-        <span class="text-green-600">✓ Working</span>
+        <span class="admin-state-ok">Working</span>
       {/if}
     </div>
 
     <div class="flex justify-between items-center">
       <span>Admin Users:</span>
       {#if status.users.loading}
-        <span class="text-stone-500">Checking...</span>
+        <span class="text-slate-500">Checking...</span>
       {:else if status.users.error}
-        <span class="text-red-600 text-xs">{status.users.error}</span>
+        <span class="admin-state-bad text-xs">{status.users.error}</span>
       {:else}
-        <span class="text-green-600">✓ Working</span>
+        <span class="admin-state-ok">Working</span>
       {/if}
     </div>
 
     <div class="flex justify-between items-center">
       <span>System Settings:</span>
       {#if status.settings.loading}
-        <span class="text-stone-500">Checking...</span>
+        <span class="text-slate-500">Checking...</span>
       {:else if status.settings.error}
-        <span class="text-red-600 text-xs">{status.settings.error}</span>
+        <span class="admin-state-bad text-xs">{status.settings.error}</span>
       {:else}
-        <span class="text-green-600">✓ {status.settings.count} settings</span>
+        <span class="admin-state-ok">{status.settings.count} settings</span>
       {/if}
     </div>
 
     <div class="flex justify-between items-center">
       <span>Audit Logs:</span>
       {#if status.auditLogs.loading}
-        <span class="text-stone-500">Checking...</span>
+        <span class="text-slate-500">Checking...</span>
       {:else if status.auditLogs.error}
-        <span class="text-red-600 text-xs">{status.auditLogs.error}</span>
+        <span class="admin-state-bad text-xs">{status.auditLogs.error}</span>
       {:else}
-        <span class="text-green-600">✓ {status.auditLogs.count} logs</span>
+        <span class="admin-state-ok">{status.auditLogs.count} logs</span>
       {/if}
     </div>
   </div>
   
-  <div class="mt-3 pt-3 border-t text-xs text-stone-600">
-    <div><strong>API Base:</strong> {apiBase || "(not set)"}</div>
+  <div class="mt-3 pt-3 border-t border-slate-700 text-xs text-slate-400">
+    <div><strong>API Base:</strong> {resolveApiBase() || "(not set)"}</div>
     <div><strong>Auth Token:</strong> {typeof window !== "undefined" && localStorage.getItem("awadhi_access_token") ? "Present" : "Missing"}</div>
   </div>
 </div>

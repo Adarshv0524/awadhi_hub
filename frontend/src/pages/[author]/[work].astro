@@ -18,10 +18,31 @@ const authorSlug = encodeURIComponent(String(author ?? ""));
 const workSlug = encodeURIComponent(String(work ?? ""));
 
 let chapters = [];
+let workMeta: any = null;
+let authorMeta: any = null;
+let chapterCount = 0;
+let totalPoetryNodes = 0;
+
+try {
+  [workMeta, authorMeta] = await Promise.all([
+    api(`/authors/${authorSlug}/works/${workSlug}`),
+    api(`/authors/${authorSlug}`),
+  ]);
+} catch {
+  workMeta = null;
+  authorMeta = null;
+}
+
 try {
   chapters = await api(`/authors/${authorSlug}/works/${workSlug}/chapters`);
+  chapterCount = Array.isArray(chapters) ? chapters.length : 0;
+  totalPoetryNodes = Array.isArray(chapters)
+    ? chapters.reduce((acc: number, chapter: any) => acc + Number(chapter?.poetry_nodes_count || 0), 0)
+    : 0;
 } catch {
   chapters = [];
+  chapterCount = 0;
+  totalPoetryNodes = 0;
 }
 ---
 
@@ -31,11 +52,35 @@ try {
   </div>
 
   <section class="rounded-2xl border border-slate-700 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-6 py-7 mb-7">
-    <p class="text-xs uppercase tracking-[0.2em] text-slate-400 mb-2">Work</p>
-    <h1 class="text-3xl font-serif font-bold text-slate-100 mb-2">
-      {safeDecode(work).replace(/-/g, " ")}
+    <p class="text-xs uppercase tracking-[0.2em] text-slate-400 mb-2">Work Landing</p>
+    <h1 class="text-3xl font-serif font-bold text-slate-100 mb-2 break-words">
+      {workMeta?.title || safeDecode(work).replace(/-/g, " ")}
     </h1>
-    <p class="text-slate-300 text-sm">Browse all available chapters in this work.</p>
+
+    <p class="text-slate-300 text-sm">
+      {workMeta?.description || "Browse all available chapters in this work."}
+    </p>
+
+    <div class="mt-4 grid gap-3 sm:grid-cols-3">
+      <div class="rounded-lg border border-cyan-700/40 bg-cyan-950/20 p-3">
+        <p class="text-[11px] uppercase tracking-wide text-cyan-300">Author</p>
+        <p class="mt-1 text-sm font-semibold text-cyan-100">{authorMeta?.name || safeDecode(author)}</p>
+      </div>
+      <div class="rounded-lg border border-purple-700/40 bg-purple-950/20 p-3">
+        <p class="text-[11px] uppercase tracking-wide text-purple-300">Chapters</p>
+        <p class="mt-1 text-sm font-semibold text-purple-100">{chapterCount}</p>
+      </div>
+      <div class="rounded-lg border border-emerald-700/40 bg-emerald-950/20 p-3">
+        <p class="text-[11px] uppercase tracking-wide text-emerald-300">Poetry Nodes</p>
+        <p class="mt-1 text-sm font-semibold text-emerald-100">{totalPoetryNodes}</p>
+      </div>
+    </div>
+
+    <div class="mt-4 flex flex-wrap gap-2 text-xs text-slate-400">
+      {workMeta?.work_type && <span class="rounded border border-slate-600 px-2 py-1">Type: {workMeta.work_type}</span>}
+      {workMeta?.original_script && <span class="rounded border border-slate-600 px-2 py-1">Script: {workMeta.original_script}</span>}
+      {authorMeta?.language && <span class="rounded border border-slate-600 px-2 py-1">Language: {authorMeta.language}</span>}
+    </div>
   </section>
 
   {

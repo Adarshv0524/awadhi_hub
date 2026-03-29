@@ -7,7 +7,7 @@
 
   type Author = { id: number; slug: string; name: string };
   type Work = { id: number; slug: string; title: string };
-  type Chapter = { id: number; slug: string; title: string };
+  type Chapter = { id: number; slug: string; title: string; number: number };
   type PoetryTypeOption = {
     poetry_type: string;
     display_name: string;

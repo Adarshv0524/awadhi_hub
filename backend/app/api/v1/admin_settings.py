@@ -7,7 +7,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.db.session import get_db
-from app.services.system_settings import get_setting, set_setting, delete_setting
+from app.services.system_settings import (
+    get_setting,
+    set_setting,
+    delete_setting,
+    bulk_import_settings,
+    SETTINGS_IMPORT_SCHEMA_VERSION,
+)
 from app.core.security import require_role, get_current_user
 from app.core.permissions import Role
 
@@ -21,6 +27,21 @@ class SettingOut(BaseModel):
 
     key: str
     value: Any
+
+
+class BulkSettingIn(BaseModel):
+    key: str
+    value: Any
+
+
+class BulkImportIn(BaseModel):
+    schema_version: int
+    settings: List[BulkSettingIn]
+    dry_run: bool = True
+    confirmation_text: str | None = None
+
+
+CRITICAL_CONFIRMATION_TEXT = "APPLY CRITICAL SETTINGS"
 
 @router.get("", response_model=List[SettingOut], dependencies=[Depends(require_role(Role.ADMIN))])
 def list_settings(db: Session = Depends(get_db)):
@@ -65,10 +86,94 @@ async def upsert_setting(key: str, request: Request, db: Session = Depends(get_d
         
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to set setting: {str(e)}")
+
+
+@router.post("/import", dependencies=[Depends(require_role(Role.ADMIN))])
+async def import_settings(
+    payload: BulkImportIn,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if payload.schema_version != SETTINGS_IMPORT_SCHEMA_VERSION:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Unsupported settings import schema version",
+                "expected": SETTINGS_IMPORT_SCHEMA_VERSION,
+                "received": payload.schema_version,
+            },
+        )
+
+    if not payload.settings:
+        raise HTTPException(status_code=400, detail="Import payload must include at least one setting")
+
+    audit_meta = {
+        "ip_address": request.client.host if request.client else None,
+        "user_agent": request.headers.get("user-agent"),
+        "request_id": request.headers.get("X-Request-ID") or request.headers.get("x-request-id"),
+        "schema_version": payload.schema_version,
+    }
+
+    settings_payload = [item.model_dump() for item in payload.settings]
+
+    try:
+        preview = bulk_import_settings(
+            db=db,
+            settings_payload=settings_payload,
+            actor_user_id=current_user.id if current_user else None,
+            metadata=audit_meta,
+            dry_run=True,
+        )
+
+        has_critical_changes = any(
+            item["is_critical"] and item["action"] in {"create", "update"}
+            for item in preview["items"]
+        )
+
+        if payload.dry_run:
+            return {
+                "schema_version": SETTINGS_IMPORT_SCHEMA_VERSION,
+                "confirmation_required": has_critical_changes,
+                "confirmation_text_hint": CRITICAL_CONFIRMATION_TEXT if has_critical_changes else None,
+                **preview,
+            }
+
+        if has_critical_changes and payload.confirmation_text != CRITICAL_CONFIRMATION_TEXT:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Critical settings detected. Confirmation text required.",
+                    "required_confirmation_text": CRITICAL_CONFIRMATION_TEXT,
+                },
+            )
+
+        applied = bulk_import_settings(
+            db=db,
+            settings_payload=settings_payload,
+            actor_user_id=current_user.id if current_user else None,
+            metadata={**audit_meta, "confirmed_critical": has_critical_changes},
+            dry_run=False,
+        )
+
+        return {
+            "schema_version": SETTINGS_IMPORT_SCHEMA_VERSION,
+            "confirmation_required": has_critical_changes,
+            "confirmation_text_hint": CRITICAL_CONFIRMATION_TEXT if has_critical_changes else None,
+            **applied,
+        }
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to import settings: {str(e)}")
 
 @router.delete("/{key}", status_code=204, dependencies=[Depends(require_role(Role.ADMIN))])
 def delete_setting_endpoint(key: str, db: Session = Depends(get_db), current_user = Depends(get_current_user)):

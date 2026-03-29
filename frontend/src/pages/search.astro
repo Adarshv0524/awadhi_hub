@@ -18,7 +18,10 @@ const safeType = (allowedType.has(contentFilter) ? contentFilter : "all") as "al
 const safeSort = (allowedSort.has(sort) ? sort : "relevance") as "relevance" | "recent";
 ---
 
-<BaseLayout title={q ? `Search: ${q}` : "Search"}>
+<BaseLayout
+  title={q ? `Search: ${q}` : "Search"}
+  description="Search across Awadhi dohas, dictionary entries, idioms, and articles with filters for content type, author, and relevance."
+>
   <SearchExperience
     client:load
     initialQuery={q}

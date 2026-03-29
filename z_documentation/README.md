@@ -91,6 +91,16 @@ Core runtime contracts contributors should assume:
 3. Shared layout owns canonical, OpenGraph, and Twitter metadata.
 4. Shared UI primitives and CSS tokens are default for new UI work.
 5. Content visibility and status rules apply across read paths.
+6. Admin user updates are canonicalized through PATCH /admin/users/{user_id}; frontend wrappers must not introduce shadow sub-routes.
+7. Admin audit UI consumes actor_user_id, before, after, and metadata from /admin/audit_logs responses as the source-of-truth shape.
+8. Frontend admin route paths are checked in tests against backend route inventory to catch drift before merge.
+9. Admin hierarchy chapter payloads must use number (not order_num) across backend and frontend contracts.
+10. Admin analytics contract is versioned under /admin/analytics/v2/* with feature-flagged fallback and telemetry for legacy usage.
+11. System settings bulk import must use schema-versioned dry-run preview and atomic apply via /admin/system_settings/import.
+12. Critical settings require explicit confirmation text before import apply is accepted.
+13. Admin auth guard must be mounted once at layout boundary; avoid page-level duplicate AuthGuard usage.
+14. Auth policy decisions are centrally logged via /api/v1/telemetry/auth-policy for observability.
+15. Current gating strategy is CSR guard + backend RBAC; SSR hard gating requires cookie/session auth migration.
 
 ## Documentation Index
 
@@ -171,6 +181,10 @@ Minimum quality bar:
 3. No page-level duplicate SEO metadata.
 4. No inaccessible core controls in search/reader flows.
 5. No domain-boundary violations between poetry and knowledge modules.
+6. No frontend wrapper route drift against backend route inventory for admin APIs.
+7. No new admin analytics integrations should depend on deprecated /analytics/* admin reporting routes.
+8. No blanket admin style overrides using broad :global selectors and !important.
+9. Core admin visual snapshots must pass in frontend/tests/visual before merge.
 
 ## 8) Security and Privacy Notes
 

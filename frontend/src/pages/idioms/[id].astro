@@ -69,7 +69,7 @@ const idiomUrl = `${baseUrl}/idioms/${id}`;
     />
   </head>
 
-  <div class="max-w-3xl mx-auto px-4 py-8">
+  <div class="max-w-3xl mx-auto px-4 py-8 min-w-0">
     {error && <p class="text-red-400 text-center">{error}</p>}
 
     {!error && idiom && (
@@ -113,7 +113,7 @@ const idiomUrl = `${baseUrl}/idioms/${id}`;
           </div>
 
           <div>
-            <h1 class="text-3xl md:text-4xl font-serif text-center text-slate-100 mb-4">{idiom.text_devanagari ?? idiom.text}</h1>
+            <h1 class="text-3xl md:text-4xl font-serif text-center text-slate-100 mb-4 break-words prose-safe">{idiom.text_devanagari ?? idiom.text}</h1>
             <!-- Copy button -->
             <div class="flex justify-center">
               <CopyButton text={idiom.text_devanagari ?? idiom.text} label="Idiom" color="indigo" client:load />
@@ -123,14 +123,14 @@ const idiomUrl = `${baseUrl}/idioms/${id}`;
           {idiom.meaning && (
             <section class="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
               <h2 class="font-semibold text-cyan-400 mb-3">Meaning</h2>
-              <p class="text-slate-300 leading-relaxed">{idiom.meaning}</p>
+              <p class="text-slate-300 leading-relaxed prose-safe">{idiom.meaning}</p>
             </section>
           )}
 
           {idiom.usage && (
             <section class="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
               <h2 class="font-semibold text-blue-400 mb-3">Usage</h2>
-              <p class="text-slate-300 leading-relaxed">{idiom.usage}</p>
+              <p class="text-slate-300 leading-relaxed prose-safe">{idiom.usage}</p>
             </section>
           )}
 

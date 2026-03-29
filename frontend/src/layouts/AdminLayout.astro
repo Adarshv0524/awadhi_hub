@@ -15,301 +15,41 @@ const currentPath = Astro.url.pathname;
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="robots" content="noindex,nofollow" />
     <title>{title}</title>
-    <style>
-      * {
-        box-sizing: border-box;
-      }
-      .admin-layout {
-        display: grid;
-        grid-template-columns: 260px 1fr;
-        min-height: 100vh;
-        background: #0f172a;
-      }
-      .skip-link {
-        position: absolute;
-        left: 0.75rem;
-        top: 0.5rem;
-        z-index: 1000;
-        background: #0ea5e9;
-        color: #082f49;
-        padding: 0.5rem 0.75rem;
-        border-radius: 0.375rem;
-        transform: translateY(-220%);
-        transition: transform 0.2s ease;
-        font-weight: 700;
-      }
-      .skip-link:focus {
-        transform: translateY(0);
-      }
-      .admin-sidebar {
-        background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
-        border-right: 1px solid #334155;
-        padding: 1.5rem 0;
-        box-shadow: 4px 0 12px rgba(0, 0, 0, 0.3);
-      }
-      .admin-sidebar .px-6 a {
-        color: #f8fafc;
-        text-decoration: none;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-      }
-      .admin-sidebar .text-slate-400 {
-        color: #94a3b8;
-        text-transform: uppercase;
-        font-size: 0.7rem;
-        letter-spacing: 1.2px;
-        font-weight: 600;
-      }
-      .admin-sidebar a {
-        display: block;
-        padding: 0.875rem 1.5rem;
-        color: #cbd5e1;
-        text-decoration: none;
-        transition: all 0.2s ease;
-        border-left: 3px solid transparent;
-        font-size: 0.95rem;
-        font-weight: 500;
-      }
-      .admin-sidebar a:hover {
-        background: rgba(99, 102, 241, 0.15);
-        color: #f1f5f9;
-        border-left-color: #818cf8;
-        padding-left: 1.75rem;
-      }
-      .admin-sidebar a:focus-visible,
-      .admin-content :global(button:focus-visible),
-      .admin-content :global(input:focus-visible),
-      .admin-content :global(select:focus-visible),
-      .admin-content :global(textarea:focus-visible) {
-        outline: 2px solid #22d3ee !important;
-        outline-offset: 2px !important;
-      }
-      .admin-sidebar a.active {
-        background: linear-gradient(90deg, rgba(99, 102, 241, 0.25) 0%, rgba(99, 102, 241, 0.1) 100%);
-        color: #e0e7ff;
-        border-left-color: #a5b4fc;
-        font-weight: 600;
-      }
-      .admin-sidebar .border-slate-700 {
-        border-color: #334155;
-      }
-      .admin-header {
-        background: #1e293b;
-        border-bottom: 2px solid #334155;
-        padding: 1.25rem 2rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-      }
-      .admin-header h1 {
-        color: #f8fafc;
-        font-weight: 700;
-      }
-      .admin-header .text-slate-600 {
-        color: #cbd5e1;
-        font-weight: 500;
-      }
-      .admin-content {
-        padding: 2rem;
-        background: #0f172a;
-        overflow-y: auto;
-      }
-      /* Style all content cards/sections */
-      .admin-content :global(h1),
-      .admin-content :global(h2) {
-        color: #a5b4fc !important;
-      }
-      .admin-content :global(h3),
-      .admin-content :global(h4) {
-        color: #93c5fd !important;
-      }
-      .admin-content :global(p) {
-        color: #cbd5e1;
-      }
-      .admin-content :global(div),
-      .admin-content :global(span) {
-        color: #cbd5e1;
-      }
-      .admin-content :global(label) {
-        color: #e9d5ff !important;
-        font-weight: 500;
-      }
-      .admin-content :global(strong) {
-        color: #fcd34d !important;
-      }
-      .admin-content :global(.bg-white),
-      .admin-content :global([class*="bg-"]) {
-        background: #1e293b !important;
-        border: 1px solid #334155 !important;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
-      }
-      .admin-content :global(input),
-      .admin-content :global(textarea),
-      .admin-content :global(select) {
-        background: #0f172a !important;
-        border: 1px solid #475569 !important;
-        color: #f1f5f9 !important;
-        padding: 0.5rem 0.75rem;
-        border-radius: 0.375rem;
-      }
-      .admin-content :global(input:focus),
-      .admin-content :global(textarea:focus),
-      .admin-content :global(select:focus) {
-        border-color: #6366f1 !important;
-        outline: none !important;
-        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3) !important;
-      }
-      .admin-content :global(button) {
-        font-weight: 600;
-        padding: 0.625rem 1.25rem !important;
-        border-radius: 0.5rem !important;
-        transition: all 0.2s ease !important;
-        border: none !important;
-        cursor: pointer !important;
-      }
-      .admin-content :global(button:not([class*="bg-"])) {
-        background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%) !important;
-        color: white !important;
-        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4) !important;
-      }
-      .admin-content :global(button:hover:not([class*="bg-"])) {
-        background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%) !important;
-        box-shadow: 0 6px 16px rgba(99, 102, 241, 0.6) !important;
-        transform: translateY(-1px) !important;
-      }
-      .admin-content :global(button.bg-blue-600),
-      .admin-content :global(button.bg-blue-500) {
-        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
-        color: white !important;
-        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4) !important;
-      }
-      .admin-content :global(button.bg-blue-600:hover),
-      .admin-content :global(button.bg-blue-500:hover) {
-        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
-        box-shadow: 0 6px 16px rgba(59, 130, 246, 0.6) !important;
-        transform: translateY(-1px) !important;
-      }
-      .admin-content :global(button.bg-green-600),
-      .admin-content :global(button.bg-green-500) {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
-        color: white !important;
-        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4) !important;
-      }
-      .admin-content :global(button.bg-green-600:hover),
-      .admin-content :global(button.bg-green-500:hover) {
-        background: linear-gradient(135deg, #059669 0%, #047857 100%) !important;
-        box-shadow: 0 6px 16px rgba(16, 185, 129, 0.6) !important;
-        transform: translateY(-1px) !important;
-      }
-      .admin-content :global(button.bg-red-600),
-      .admin-content :global(button.bg-red-500) {
-        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
-        color: white !important;
-        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4) !important;
-      }
-      .admin-content :global(button.bg-red-600:hover),
-      .admin-content :global(button.bg-red-500:hover) {
-        background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
-        box-shadow: 0 6px 16px rgba(239, 68, 68, 0.6) !important;
-        transform: translateY(-1px) !important;
-      }
-      .admin-content :global(button.bg-gray-500),
-      .admin-content :global(button.bg-gray-600) {
-        background: linear-gradient(135deg, #64748b 0%, #475569 100%) !important;
-        color: white !important;
-        box-shadow: 0 4px 12px rgba(100, 116, 139, 0.4) !important;
-      }
-      .admin-content :global(button.bg-gray-500:hover),
-      .admin-content :global(button.bg-gray-600:hover) {
-        background: linear-gradient(135deg, #475569 0%, #334155 100%) !important;
-        box-shadow: 0 6px 16px rgba(100, 116, 139, 0.6) !important;
-        transform: translateY(-1px) !important;
-      }
-      .admin-content :global(table) {
-        background: #1e293b !important;
-      }
-      .admin-content :global(th) {
-        background: #334155 !important;
-        color: #a5b4fc !important;
-        font-weight: 600;
-      }
-      .admin-content :global(td) {
-        color: #cbd5e1 !important;
-        border-color: #334155 !important;
-      }
-      .admin-content :global(tr:hover) {
-        background: #334155 !important;
-      }
-      .admin-content :global(.text-green-600),
-      .admin-content :global(.text-green-500) {
-        color: #34d399 !important;
-      }
-      .admin-content :global(.text-red-600),
-      .admin-content :global(.text-red-500) {
-        color: #f87171 !important;
-      }
-      .admin-content :global(.text-blue-600),
-      .admin-content :global(.text-blue-500) {
-        color: #60a5fa !important;
-      }
-      .admin-content :global(.text-yellow-600),
-      .admin-content :global(.text-yellow-500) {
-        color: #fbbf24 !important;
-      }
-      .admin-content :global(.text-purple-600),
-      .admin-content :global(.text-purple-500) {
-        color: #c084fc !important;
-      }
-      footer {
-        background: #1e293b;
-        border-top: 1px solid #334155;
-        color: #94a3b8;
-      }
-      @media (max-width: 768px) {
-        .admin-layout {
-          grid-template-columns: 1fr;
-        }
-        .admin-sidebar {
-          display: none;
-        }
-      }
-    </style>
   </head>
-  <body>
-    <a href="#admin-main-content" class="skip-link">Skip to main content</a>
+  <body class="admin-root">
+    <a href="#admin-main-content" class="admin-skip-link">Skip to main content</a>
     <AuthGuard minRole="admin" apiBase={API_BASE} />
 
-    <div class="admin-layout">
+    <div class="admin-shell">
       <!-- Sidebar Navigation -->
-      <aside class="admin-sidebar">
-        <div class="px-6 mb-6">
-          <a href="/" class="text-xl font-bold text-white">Awadhi New</a>
-          <div class="text-xs text-slate-400 mt-1">Admin Console</div>
+      <aside class="admin-sidebar-panel">
+        <div class="admin-brand-block">
+          <a href="/" class="admin-brand-link">Awadhi New</a>
+          <div class="admin-brand-meta">Admin Console</div>
         </div>
         
-        <nav aria-label="Admin navigation">
-          <a href="/admin" class={currentPath === '/admin' ? 'active' : ''}>
+        <nav aria-label="Admin navigation" class="admin-nav">
+          <a href="/admin" class="admin-nav-link" data-active={currentPath === '/admin'}>
             <span class="text-lg mr-2">📊</span> Dashboard
           </a>
-          <a href="/admin/users" class={currentPath === '/admin/users' ? 'active' : ''}>
+          <a href="/admin/users" class="admin-nav-link" data-active={currentPath === '/admin/users'}>
             <span class="text-lg mr-2">👥</span> Users
           </a>
-          <a href="/admin/hierarchy" class={currentPath === '/admin/hierarchy' ? 'active' : ''}>
+          <a href="/admin/hierarchy" class="admin-nav-link" data-active={currentPath === '/admin/hierarchy'}>
             <span class="text-lg mr-2">📚</span> Hierarchy
           </a>
-          <a href="/admin/settings" class={currentPath === '/admin/settings' ? 'active' : ''}>
+          <a href="/admin/settings" class="admin-nav-link" data-active={currentPath === '/admin/settings'}>
             <span class="text-lg mr-2">⚙️</span> Settings
           </a>
-          <a href="/admin/audit" class={currentPath === '/admin/audit' ? 'active' : ''}>
+          <a href="/admin/audit" class="admin-nav-link" data-active={currentPath === '/admin/audit'}>
             <span class="text-lg mr-2">📝</span> Audit Logs
           </a>
           
-          <div class="mt-6 pt-6 border-t border-slate-700">
-            <a href="/moderation">
+          <div class="admin-nav-secondary">
+            <a href="/moderation" class="admin-nav-link">
               <span class="text-lg mr-2">✅</span> Moderation
             </a>
-            <a href="/">
+            <a href="/" class="admin-nav-link">
               <span class="text-lg mr-2">🏠</span> Public Site
             </a>
           </div>
@@ -317,36 +57,43 @@ const currentPath = Astro.url.pathname;
       </aside>
 
       <!-- Main Content Area -->
-      <div class="flex flex-col">
-        <header class="admin-header">
-          <h1 class="text-xl font-semibold text-slate-800">{title.replace(' · Admin', '')}</h1>
-          <div class="text-sm text-slate-600">
+      <div class="admin-content-shell">
+        <header class="admin-topbar">
+          <h1 class="admin-topbar-title">{title.replace(' · Admin', '')}</h1>
+          <div class="admin-user-pill">
             <span id="admin-username">Loading...</span>
           </div>
         </header>
 
-        <main id="admin-main-content" class="admin-content flex-1">
+        <main id="admin-main-content" class="admin-main flex-1">
           <slot />
         </main>
 
-        <footer class="px-8 py-4 text-xs text-slate-500 border-t">
+        <footer class="admin-footer">
           © {new Date().getFullYear()} Awadhi New — Admin Console
         </footer>
       </div>
     </div>
 
-    <script is:inline define:vars={{ API_BASE }}>
+    <script is:inline>
       (async function() {
         try {
-          const token = localStorage.getItem("awadhi_access_token");
-          if (!token) return;
-          const res = await fetch(`${API_BASE}/auth/me`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          if (res.ok) {
-            const user = await res.json();
-            const el = document.getElementById("admin-username");
-            if (el) el.textContent = `@${user.username || user.email}`;
+          const el = document.getElementById("admin-username");
+          if (!el) return;
+
+          const applyUser = function (user) {
+            if (!user) return;
+            el.textContent = `@${user.username || user.email || "admin"}`;
+          };
+
+          if (window.__awadhiAuthGuardMe) {
+            applyUser(window.__awadhiAuthGuardMe);
+            return;
+          }
+
+          const cached = localStorage.getItem("awadhi_user_cache");
+          if (cached) {
+            applyUser(JSON.parse(cached));
           }
         } catch (e) {}
       })();

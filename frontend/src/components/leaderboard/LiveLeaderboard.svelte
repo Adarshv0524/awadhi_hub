@@ -21,7 +21,10 @@
   let generatedAt = "";
   let rows: LeaderboardEntry[] = [];
   let reconnectTimer: number | null = null;
+  let pollTimer: number | null = null;
   let socket: WebSocket | null = null;
+  let wsRetryCount = 0;
+  let mode: "websocket" | "polling" = "polling";
 
   function buildWsUrl(path: string): string {
     const base = API_BASE || window.location.origin;
@@ -34,20 +37,70 @@
 
   async function loadInitial() {
     const payload = await api<LeaderboardPayload>("/analytics/leaderboard?limit=20");
-    rows = payload.results || [];
-    generatedAt = payload.generated_at;
+    applyPayload(payload);
     loading = false;
   }
 
+  async function loadByPolling() {
+    try {
+      const payload = await api<LeaderboardPayload>("/analytics/leaderboard?limit=20");
+      applyPayload(payload);
+      error = "";
+    } catch (e: any) {
+      error = e?.message || "Polling failed";
+    }
+  }
+
+  function applyPayload(payload: LeaderboardPayload) {
+    rows = payload.results || [];
+    generatedAt = payload.generated_at;
+  }
+
+  function stopPolling() {
+    if (pollTimer) {
+      window.clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  function startPolling() {
+    mode = "polling";
+    stopPolling();
+    void loadByPolling();
+    pollTimer = window.setInterval(() => {
+      void loadByPolling();
+    }, 30000);
+  }
+
+  function closeSocket() {
+    if (socket && socket.readyState <= 1) {
+      socket.close();
+    }
+    socket = null;
+  }
+
   function connectSocket() {
+    closeSocket();
+    stopPolling();
     const wsUrl = buildWsUrl("/analytics/ws/leaderboard");
-    socket = new WebSocket(wsUrl);
+    try {
+      socket = new WebSocket(wsUrl);
+    } catch {
+      error = "Live updates unavailable, switched to polling.";
+      startPolling();
+      return;
+    }
+
+    socket.onopen = () => {
+      wsRetryCount = 0;
+      mode = "websocket";
+      error = "";
+    };
 
     socket.onmessage = (ev) => {
       try {
         const payload: LeaderboardPayload = JSON.parse(ev.data);
-        rows = payload.results || [];
-        generatedAt = payload.generated_at;
+        applyPayload(payload);
         error = "";
       } catch {
         // Ignore malformed messages.
@@ -55,14 +108,16 @@
     };
 
     socket.onerror = () => {
-      error = "Live updates disconnected. Reconnecting...";
+      error = "Live updates disconnected, falling back to polling.";
     };
 
     socket.onclose = () => {
+      startPolling();
+      wsRetryCount += 1;
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       reconnectTimer = window.setTimeout(() => {
         connectSocket();
-      }, 2000);
+      }, Math.min(15000, 2000 * wsRetryCount));
     };
   }
 
@@ -82,12 +137,14 @@
       } catch (e: any) {
         loading = false;
         error = e?.message || "Failed to load leaderboard";
+        startPolling();
       }
     })();
 
     return () => {
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      if (socket && socket.readyState <= 1) socket.close();
+      stopPolling();
+      closeSocket();
     };
   });
 </script>
@@ -99,6 +156,9 @@
       {#if generatedAt}
         Updated at {formatTime(generatedAt)}
       {/if}
+      <span class="ml-2 rounded border border-slate-700 px-2 py-0.5 text-xs text-slate-300">
+        Mode: {mode === "websocket" ? "Live WS" : "Polling (30s)"}
+      </span>
     </div>
   </div>
 

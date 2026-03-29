@@ -65,8 +65,8 @@
   
   <!-- Tooltip on hover -->
   <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-950 border border-slate-600 rounded shadow-lg text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-    <div class="text-slate-400">Max: <span class="text-cyan-400 font-mono">{max}</span></div>
-    <div class="text-slate-400">Avg: <span class="text-blue-400 font-mono">{avg}</span></div>
-    <div class="text-slate-400">Trend: <span class="text-green-400 font-mono">{trend}%</span></div>
+    <div class="text-slate-400">Max: <span class="text-slate-200 font-mono">{max}</span></div>
+    <div class="text-slate-400">Avg: <span class="text-slate-200 font-mono">{avg}</span></div>
+    <div class="text-slate-400">Trend: <span class="text-slate-200 font-mono">{trend}%</span></div>
   </div>
 </div>

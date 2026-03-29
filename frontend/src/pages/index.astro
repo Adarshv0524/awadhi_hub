@@ -3,16 +3,25 @@
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { api } from "../lib/api";
 
-let featuredArticles = [];
+type FeaturedArticle = {
+  id: number;
+  title: string;
+  body?: string | null;
+};
+
+let featuredArticles: FeaturedArticle[] = [];
 try {
-  featuredArticles = await api("/articles?limit=5");
+  featuredArticles = await api<FeaturedArticle[]>("/articles?limit=5");
 } catch (e) {
   // non-fatal
   featuredArticles = [];
 }
 ---
 
-<BaseLayout title="Awadhi New · Home">
+<BaseLayout
+  title="Awadhi New · Home"
+  description="Awadhi New is a curated archive of Awadhi literature featuring dohas, dictionary entries, idioms, authors, and research articles."
+>
   <!-- Hero Section -->
   <div class="relative -mt-8 -mx-4 mb-12 px-4 py-20 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border-b border-slate-700">
     <div class="max-w-4xl mx-auto text-center">
@@ -84,7 +93,7 @@ try {
         Featured Articles
       </h2>
       <div class="grid sm:grid-cols-2 gap-4">
-        {featuredArticles.map(article => (
+        {featuredArticles.map((article: FeaturedArticle) => (
           <a 
             href={`/articles/${article.id}`} 
             class="p-4 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-purple-500 rounded-lg transition-all group"

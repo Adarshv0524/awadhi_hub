@@ -3,9 +3,9 @@
 import AdminLayout from "../../layouts/AdminLayout.astro";
 import AuditTable from "../../components/admin/AuditTable.svelte";
 export const prerender = false;
-const API_BASE = import.meta.env.PUBLIC_API_BASE ?? "";
+const API_BASE = import.meta.env.PUBLIC_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : "");
 ---
 <AdminLayout title="Audit Logs · Admin">
-  <h1 class="text-2xl font-serif mb-4">Audit Logs</h1>
+  <h1 class="admin-page-title">Audit Logs</h1>
   <AuditTable apiBase={API_BASE} client:load />
 </AdminLayout>

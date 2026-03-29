@@ -3,7 +3,7 @@ import logging
 from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -15,6 +15,7 @@ from app.services.content_service import (
     create_canonical_poetry_node_from_submission,
 )
 from app.services.batch_moderation import batch_approve_submissions, BatchValidationError
+from app.services.model_governance_service import append_model_event
 
 router = APIRouter(prefix="/moderation", tags=["moderation"])
 
@@ -39,6 +40,10 @@ class ModerationSubmissionOut(BaseModel):
 class ModerationActionIn(BaseModel):
     note: Optional[str] = None
     guideline_version: Optional[str] = None
+    approved_by_human: bool = False
+    model_recommendation_id: Optional[str] = None
+    model_confidence: Optional[float] = None
+    model_rationale_snippets: List[str] = Field(default_factory=list)
 
 class ModerationBatchIn(BaseModel):
     action: str  # "approve" or "reject"
@@ -150,6 +155,8 @@ def approve_submission(
     sub = db.query(Submission).filter(Submission.id == submission_id, Submission.is_deleted == False).with_for_update().first()
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
+    if not data.approved_by_human:
+        raise HTTPException(status_code=400, detail="Human approval is required for irreversible moderation actions")
     _ensure_can_moderate(sub)
     from_status = sub.status
     sub.status = "approved"
@@ -165,6 +172,25 @@ def approve_submission(
         guideline_version=data.guideline_version,
         note=data.note,
     )
+
+    if data.model_recommendation_id:
+        append_model_event(
+            db,
+            recommendation_id=data.model_recommendation_id,
+            use_case="moderation_triage",
+            event_type="human_decision",
+            model_name="human-review",
+            model_version="v1",
+            actor_user_id=current_user.id,
+            payload={
+                "submission_id": sub.id,
+                "decision": "approve",
+                "approved_by_human": data.approved_by_human,
+                "model_confidence": data.model_confidence,
+                "model_rationale_snippets": data.model_rationale_snippets,
+                "note": data.note,
+            },
+        )
     
     # Create canonical content based on content_type
     logger = logging.getLogger("app.moderation")
@@ -173,7 +199,6 @@ def approve_submission(
     try:
         if sub.content_type == "doha":
             create_canonical_doha_from_submission(db=db, submission=sub, moderator=current_user)
-            create_canonical_poetry_node_from_submission(db=db, submission=sub, moderator_user=current_user)
             logger.info("Created canonical doha for submission %s", sub.id)
         elif sub.content_type == "dictionary":
             from app.services.content_service import create_canonical_dictionary_from_submission
@@ -188,6 +213,7 @@ def approve_submission(
             article_id = create_canonical_article_from_submission(db=db, submission=sub, moderator_user=current_user)
             logger.info("Created article entry id=%s for submission %s", article_id, sub.id)
         else:
+            # Non-doha poetry forms are canonically represented via poetry_nodes.
             poetry_node_id = create_canonical_poetry_node_from_submission(db=db, submission=sub, moderator_user=current_user)
             if poetry_node_id:
                 logger.info("Created poetry node id=%s for submission %s", poetry_node_id, sub.id)
@@ -220,6 +246,8 @@ def reject_submission(
     sub = db.query(Submission).filter(Submission.id == submission_id, Submission.is_deleted == False).with_for_update().first()
     if not sub:
         raise HTTPException(status_code=404, detail="Submission not found")
+    if not data.approved_by_human:
+        raise HTTPException(status_code=400, detail="Human approval is required for irreversible moderation actions")
     _ensure_can_moderate(sub)
     from_status = sub.status
     sub.status = "rejected"
@@ -235,6 +263,25 @@ def reject_submission(
         guideline_version=data.guideline_version,
         note=data.note,
     )
+
+    if data.model_recommendation_id:
+        append_model_event(
+            db,
+            recommendation_id=data.model_recommendation_id,
+            use_case="moderation_triage",
+            event_type="human_decision",
+            model_name="human-review",
+            model_version="v1",
+            actor_user_id=current_user.id,
+            payload={
+                "submission_id": sub.id,
+                "decision": "reject",
+                "approved_by_human": data.approved_by_human,
+                "model_confidence": data.model_confidence,
+                "model_rationale_snippets": data.model_rationale_snippets,
+                "note": data.note,
+            },
+        )
     db.commit()
     db.refresh(sub)
     return sub

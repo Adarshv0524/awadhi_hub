@@ -1,5 +1,6 @@
 // src/lib/admin.ts
 // Centralized admin API wrapper
+import { z } from "zod";
 
 const API_BASE = import.meta.env.PUBLIC_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : "");
 
@@ -36,6 +37,53 @@ function getAuthHeader(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+async function requestJson<T>(
+  path: string,
+  init: RequestInit = {},
+  apiBaseOverride?: string,
+): Promise<T> {
+  const base = resolveApiBase(apiBaseOverride);
+  if (!base) {
+    throw new Error("Admin API base URL is not configured. Set PUBLIC_API_BASE.");
+  }
+
+  try {
+    const res = await fetchWithLocalFallback(`${base}${path}`, init);
+    if (!res.ok) {
+      throw new Error(`Request failed (${res.status}) for ${path}`);
+    }
+    return (await res.json()) as T;
+  } catch (e: any) {
+    if (e?.message === "Failed to fetch") {
+      const fallback = localFallbackBase(base);
+      const tried = fallback ? `${base} and ${fallback}` : base;
+      throw new Error(`Failed to connect to backend at ${tried}. Check backend server and CORS settings.`);
+    }
+    throw e;
+  }
+}
+
+async function requestNoContent(path: string, init: RequestInit = {}, apiBaseOverride?: string): Promise<void> {
+  const base = resolveApiBase(apiBaseOverride);
+  if (!base) {
+    throw new Error("Admin API base URL is not configured. Set PUBLIC_API_BASE.");
+  }
+
+  try {
+    const res = await fetchWithLocalFallback(`${base}${path}`, init);
+    if (!res.ok) {
+      throw new Error(`Request failed (${res.status}) for ${path}`);
+    }
+  } catch (e: any) {
+    if (e?.message === "Failed to fetch") {
+      const fallback = localFallbackBase(base);
+      const tried = fallback ? `${base} and ${fallback}` : base;
+      throw new Error(`Failed to connect to backend at ${tried}. Check backend server and CORS settings.`);
+    }
+    throw e;
+  }
+}
+
 export interface AdminUser {
   id: number;
   username: string;
@@ -50,13 +98,13 @@ export interface AdminUser {
 
 export interface AuditLog {
   id: number;
-  user_id: number | null;
-  username: string | null;
+  actor_user_id: number | null;
   action: string;
   resource_type: string | null;
   resource_id: number | null;
-  details: any;
-  ip_address: string | null;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -87,13 +135,50 @@ export interface Chapter {
   slug: string;
   title: string;
   work_id: number;
-  order_num: number;
+  number: number;
 }
 
 export interface PaginatedResponse<T> {
   total: number;
   results: T[];
 }
+
+const adminUserSchema = z.object({
+  id: z.number(),
+  username: z.string().nullable(),
+  email: z.string(),
+  role: z.string(),
+  permissions: z.number(),
+  permission_scopes: z.record(z.unknown()).nullable().optional(),
+  created_at: z.string(),
+  is_active: z.boolean(),
+  is_banned: z.boolean().optional(),
+});
+
+const auditLogSchema = z.object({
+  id: z.number(),
+  actor_user_id: z.number().nullable(),
+  action: z.string(),
+  resource_type: z.string().nullable(),
+  resource_id: z.number().nullable(),
+  before: z.record(z.unknown()).nullable(),
+  after: z.record(z.unknown()).nullable(),
+  metadata: z.record(z.unknown()).nullable(),
+  created_at: z.string(),
+});
+
+const paginatedAuditLogsSchema = z.object({
+  total: z.number(),
+  results: z.array(auditLogSchema),
+});
+
+const chapterSchema = z.object({
+  id: z.number(),
+  slug: z.string(),
+  title: z.string(),
+  work_id: z.number(),
+  number: z.number(),
+});
 
 export interface ModerationSubmission {
   id: number;
@@ -105,6 +190,16 @@ export interface ModerationSubmission {
   assigned_to_id: number | null;
   assigned_to_username: string | null;
   created_at: string;
+}
+
+export interface ModerationTriageRecommendation {
+  submission_id: number;
+  content_type: string;
+  confidence: number;
+  rationale_snippets: string[];
+  recommendation: string;
+  recommendation_id: string;
+  explainability: Record<string, unknown>;
 }
 
 // User Management
@@ -119,7 +214,8 @@ export async function getUsers(limit = 100, offset = 0, apiBaseOverride?: string
       headers: getAuthHeader(),
     });
     if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`);
-    return res.json();
+    const payload = await res.json();
+    return z.array(adminUserSchema).parse(payload) as AdminUser[];
   } catch (e: any) {
     if (e?.message === "Failed to fetch") {
       const fallback = localFallbackBase(base);
@@ -131,12 +227,7 @@ export async function getUsers(limit = 100, offset = 0, apiBaseOverride?: string
 }
 
 export async function updateUserRole(userId: number, role: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/admin/users/${userId}/role`, {
-    method: "PATCH",
-    headers: { ...getAuthHeader(), "Content-Type": "application/json" },
-    body: JSON.stringify({ role }),
-  });
-  if (!res.ok) throw new Error(`Failed to update role: ${res.status}`);
+  await updateUser(userId, { role });
 }
 
 export async function updateUser(userId: number, data: {
@@ -157,75 +248,56 @@ export async function updateUser(userId: number, data: {
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to update user: ${res.status}`);
+  await adminUserSchema.parseAsync(await res.json());
 }
 
 export async function deactivateUser(userId: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/admin/users/${userId}/deactivate`, {
-    method: "POST",
-    headers: getAuthHeader(),
-  });
-  if (!res.ok) throw new Error(`Failed to deactivate user: ${res.status}`);
+  // Deactivation is represented by the canonical PATCH /admin/users/{id} contract.
+  await updateUser(userId, { is_active: false });
 }
 
 // Audit Logs
 export async function getAuditLogs(limit = 50, offset = 0): Promise<PaginatedResponse<AuditLog>> {
-  const res = await fetch(`${API_BASE}/admin/audit_logs?limit=${limit}&offset=${offset}`, {
+  const payload = await requestJson<unknown>(`/admin/audit_logs?limit=${limit}&offset=${offset}`, {
     headers: getAuthHeader(),
   });
-  if (!res.ok) throw new Error(`Failed to fetch audit logs: ${res.status}`);
-  return res.json();
+  return paginatedAuditLogsSchema.parse(payload) as PaginatedResponse<AuditLog>;
 }
 
-export async function exportAuditLogsCSV(): Promise<void> {
-  const res = await fetch(`${API_BASE}/admin/audit-logs/export-csv`, {
+export async function getAuditLogById(id: number): Promise<AuditLog> {
+  const payload = await requestJson<unknown>(`/admin/audit_logs/${id}`, {
     headers: getAuthHeader(),
   });
-  if (!res.ok) throw new Error(`Failed to export audit logs: ${res.status}`);
-  
-  const blob = await res.blob();
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `audit_logs_${new Date().toISOString().split('T')[0]}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  window.URL.revokeObjectURL(url);
+  return auditLogSchema.parse(payload) as AuditLog;
 }
 
 // System Settings
 export async function getSettings(): Promise<Setting[]> {
-  const res = await fetch(`${API_BASE}/admin/system_settings`, {
+  return requestJson<Setting[]>(`/admin/system_settings`, {
     headers: getAuthHeader(),
   });
-  if (!res.ok) throw new Error(`Failed to fetch settings: ${res.status}`);
-  return res.json();
 }
 
 export async function updateSetting(key: string, value: any): Promise<void> {
-  const res = await fetch(`${API_BASE}/admin/system_settings/${key}`, {
+  await requestNoContent(`/admin/system_settings/${key}`, {
     method: "PUT",
     headers: { ...getAuthHeader(), "Content-Type": "application/json" },
     body: JSON.stringify({ value }),
   });
-  if (!res.ok) throw new Error(`Failed to update setting: ${res.status}`);
 }
 
 export async function deleteSetting(key: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/admin/system_settings/${key}`, {
+  await requestNoContent(`/admin/system_settings/${key}`, {
     method: "DELETE",
     headers: getAuthHeader(),
   });
-  if (!res.ok) throw new Error(`Failed to delete setting: ${res.status}`);
 }
 
 // Hierarchy Management
 export async function getAuthors(limit = 100): Promise<Author[]> {
-  const res = await fetch(`${API_BASE}/authors?limit=${limit}`, {
+  return requestJson<Author[]>(`/authors?limit=${limit}`, {
     headers: getAuthHeader(),
   });
-  if (!res.ok) throw new Error(`Failed to fetch authors: ${res.status}`);
-  return res.json();
 }
 
 export async function createAuthor(data: { slug: string; name: string; language?: string; short_bio?: string }): Promise<Author> {
@@ -239,11 +311,9 @@ export async function createAuthor(data: { slug: string; name: string; language?
 }
 
 export async function getWorks(authorSlug: string, limit = 50): Promise<Work[]> {
-  const res = await fetch(`${API_BASE}/authors/${authorSlug}/works?limit=${limit}`, {
+  return requestJson<Work[]>(`/authors/${authorSlug}/works?limit=${limit}`, {
     headers: getAuthHeader(),
   });
-  if (!res.ok) throw new Error(`Failed to fetch works: ${res.status}`);
-  return res.json();
 }
 
 export async function createWork(authorId: number, data: { slug: string; title: string; description?: string }): Promise<Work> {
@@ -257,37 +327,45 @@ export async function createWork(authorId: number, data: { slug: string; title: 
 }
 
 export async function getChapters(authorSlug: string, workSlug: string, limit = 200): Promise<Chapter[]> {
-  const res = await fetch(`${API_BASE}/authors/${authorSlug}/works/${workSlug}/chapters?limit=${limit}`, {
+  const payload = await requestJson<unknown>(`/authors/${authorSlug}/works/${workSlug}/chapters?limit=${limit}`, {
     headers: getAuthHeader(),
   });
-  if (!res.ok) throw new Error(`Failed to fetch chapters: ${res.status}`);
-  return res.json();
+  return z.array(chapterSchema).parse(payload) as Chapter[];
 }
 
-export async function createChapter(workId: number, data: { slug: string; title: string; order_num: number }): Promise<Chapter> {
+export async function createChapter(workId: number, data: { slug: string; title: string; number: number }): Promise<Chapter> {
   const res = await fetch(`${API_BASE}/admin/hierarchy/works/${workId}/chapters`, {
     method: "POST",
     headers: { ...getAuthHeader(), "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error(`Failed to create chapter: ${res.status}`);
-  return res.json();
+  const payload = await res.json();
+  return chapterSchema.parse(payload) as Chapter;
 }
 
 // Moderation Queue
 export async function getModerationQueue(status?: string, limit = 50, offset = 0): Promise<ModerationSubmission[]> {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (status) params.append("status", status);
-  
-  const res = await fetch(`${API_BASE}/moderation/submissions?${params}`, {
+
+  return requestJson<ModerationSubmission[]>(`/moderation/submissions?${params}`, {
     headers: getAuthHeader(),
   });
-  if (!res.ok) throw new Error(`Failed to fetch moderation queue: ${res.status}`);
-  return res.json();
+}
+
+export async function getModerationSubmissionDetail(submissionId: number): Promise<any> {
+  return requestJson<any>(`/moderation/submissions/${submissionId}`, {
+    headers: getAuthHeader(),
+  });
 }
 
 export async function approveSubmission(submissionId: number, note?: string, guideline_version?: string): Promise<void> {
-  const body = { note, guideline_version };
+  const body = {
+    note,
+    guideline_version,
+    approved_by_human: true,
+  };
   const res = await fetch(`${API_BASE}/moderation/submissions/${submissionId}/approve`, {
     method: "POST",
     headers: { ...getAuthHeader(), "Content-Type": "application/json" },
@@ -300,19 +378,76 @@ export async function rejectSubmission(submissionId: number, reason: string): Pr
   const res = await fetch(`${API_BASE}/moderation/submissions/${submissionId}/reject`, {
     method: "POST",
     headers: { ...getAuthHeader(), "Content-Type": "application/json" },
-    body: JSON.stringify({ note: reason }),
+    body: JSON.stringify({ note: reason, approved_by_human: true }),
   });
   if (!res.ok) throw new Error(`Failed to reject submission: ${res.status}`);
+}
+
+export async function approveSubmissionWithModelDecision(
+  submissionId: number,
+  payload: {
+    note?: string;
+    guideline_version?: string;
+    approved_by_human: boolean;
+    model_recommendation_id?: string;
+    model_confidence?: number;
+    model_rationale_snippets?: string[];
+  },
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/moderation/submissions/${submissionId}/approve`, {
+    method: "POST",
+    headers: { ...getAuthHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Failed to approve submission: ${res.status}`);
+}
+
+export async function rejectSubmissionWithModelDecision(
+  submissionId: number,
+  payload: {
+    note: string;
+    approved_by_human: boolean;
+    model_recommendation_id?: string;
+    model_confidence?: number;
+    model_rationale_snippets?: string[];
+  },
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/moderation/submissions/${submissionId}/reject`, {
+    method: "POST",
+    headers: { ...getAuthHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Failed to reject submission: ${res.status}`);
+}
+
+export async function getModerationTriage(limit = 50): Promise<ModerationTriageRecommendation[]> {
+  return requestJson<ModerationTriageRecommendation[]>(`/api/v1/ai/moderation-triage?limit=${limit}`, {
+    headers: getAuthHeader(),
+  });
+}
+
+export async function logModelDecision(payload: {
+  recommendation_id: string;
+  use_case: string;
+  human_decision: string;
+  rationale: string;
+  reversible: boolean;
+  approved_by_human: boolean;
+  explainability_payload?: Record<string, unknown>;
+}): Promise<void> {
+  await requestNoContent(`/api/v1/ai/model-decision`, {
+    method: "POST",
+    headers: { ...getAuthHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 // Auth Check
 export async function getCurrentUser(): Promise<{ id: number; username: string; email: string; role: string } | null> {
   try {
-    const res = await fetch(`${API_BASE}/auth/me`, {
+    return await requestJson<{ id: number; username: string; email: string; role: string }>(`/auth/me`, {
       headers: getAuthHeader(),
     });
-    if (!res.ok) return null;
-    return res.json();
   } catch {
     return null;
   }

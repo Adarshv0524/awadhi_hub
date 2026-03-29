@@ -116,67 +116,83 @@
 
   async function updateAuthor(authorId) {
     if (!editingAuthor) return;
+    const previousAuthors = [...authors];
+    const patch = { ...editingAuthor };
+    authors = authors.map((a) => (a.id === authorId ? { ...a, ...patch } : a));
+    editingAuthor = null;
     try {
       const res = await fetch(`${apiBase}/admin/hierarchy/authors/${authorId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...getAuthHeader() },
-        body: JSON.stringify(editingAuthor)
+        body: JSON.stringify(patch)
       });
       if (!res.ok) throw new Error("Update failed");
-      await loadAuthors();
-      editingAuthor = null;
-    } catch (e) { alert("Update author failed: " + e); }
+      const updated = await res.json();
+      authors = authors.map((a) => (a.id === authorId ? { ...a, ...updated } : a));
+    } catch (e) {
+      authors = previousAuthors;
+      alert("Update author failed: " + e);
+    }
   }
 
   async function updateWork(workId) {
     if (!editingWork) return;
+    const previousWorks = [...works];
+    const patch = { ...editingWork };
+    works = works.map((w) => (w.id === workId ? { ...w, ...patch } : w));
+    editingWork = null;
     try {
       const res = await fetch(`${apiBase}/admin/hierarchy/works/${workId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...getAuthHeader() },
-        body: JSON.stringify(editingWork)
+        body: JSON.stringify(patch)
       });
       if (!res.ok) throw new Error("Update failed");
-      const author = authors.find(a => a.id === selectedAuthorForWorks);
-      if (author) await loadWorks(author.slug);
-      editingWork = null;
-    } catch (e) { alert("Update work failed: " + e); }
+      const updated = await res.json();
+      works = works.map((w) => (w.id === workId ? { ...w, ...updated } : w));
+    } catch (e) {
+      works = previousWorks;
+      alert("Update work failed: " + e);
+    }
   }
 
   async function updateChapter(chapterId) {
     if (!editingChapter) return;
+    const previousChapters = [...chapters];
+    const patch = { ...editingChapter };
+    chapters = chapters.map((c) => (c.id === chapterId ? { ...c, ...patch } : c));
+    editingChapter = null;
     try {
       const res = await fetch(`${apiBase}/admin/hierarchy/chapters/${chapterId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", ...getAuthHeader() },
-        body: JSON.stringify(editingChapter)
+        body: JSON.stringify(patch)
       });
       if (!res.ok) throw new Error("Update failed");
-      if (selectedAuthorForWorks && selectedWorkForChapters) {
-        const author = authors.find(a => a.id === selectedAuthorForWorks);
-        const work = works.find(w => w.id === selectedWorkForChapters);
-        if (author && work) await loadChapters(author.slug, work.slug);
-      }
-      editingChapter = null;
-    } catch (e) { alert("Update chapter failed: " + e); }
+      const updated = await res.json();
+      chapters = chapters.map((c) => (c.id === chapterId ? { ...c, ...updated } : c));
+    } catch (e) {
+      chapters = previousChapters;
+      alert("Update chapter failed: " + e);
+    }
   }
 
   onMount(loadAuthors);
 </script>
 
-{#if error}<p class="text-red-600">{error}</p>{/if}
+{#if error}<p class="admin-state-bad">{error}</p>{/if}
 
 <section class="grid gap-4 md:grid-cols-3">
-  <div class="p-3 border rounded">
+  <div class="admin-panel p-3">
     <h3 class="font-semibold">Create Author</h3>
     <input placeholder="slug" bind:value={newAuthor.slug} class="w-full mt-2 p-2 border rounded" />
     <input placeholder="name" bind:value={newAuthor.name} class="w-full mt-2 p-2 border rounded" />
     <input placeholder="language (optional)" bind:value={newAuthor.language} class="w-full mt-2 p-2 border rounded" />
     <input placeholder="short bio (optional)" bind:value={newAuthor.short_bio} class="w-full mt-2 p-2 border rounded" />
-    <button class="mt-3 px-3 py-2 border rounded" on:click={createAuthor}>Create</button>
+    <button class="mt-3 admin-btn admin-btn-primary" on:click={createAuthor}>Create</button>
   </div>
 
-  <div class="p-3 border rounded">
+  <div class="admin-panel p-3">
     <h3 class="font-semibold">Create Work</h3>
     <select bind:value={newWork.author_id} class="w-full p-2 border rounded mt-2">
       <option value={null}>Pick author</option>
@@ -187,10 +203,10 @@
     <input placeholder="slug" bind:value={newWork.slug} class="w-full mt-2 p-2 border rounded" />
     <input placeholder="title" bind:value={newWork.title} class="w-full mt-2 p-2 border rounded" />
     <input placeholder="description (optional)" bind:value={newWork.description} class="w-full mt-2 p-2 border rounded" />
-    <button class="mt-3 px-3 py-2 border rounded" on:click={createWork}>Create</button>
+    <button class="mt-3 admin-btn admin-btn-primary" on:click={createWork}>Create</button>
   </div>
 
-  <div class="p-3 border rounded">
+  <div class="admin-panel p-3">
     <h3 class="font-semibold">Create Chapter</h3>
     <select bind:value={newChapter.work_id} class="w-full p-2 border rounded mt-2" on:change={() => loadChapters(newChapter.work_id)}>
       <option value={null}>Pick work</option>
@@ -201,7 +217,7 @@
     <input placeholder="slug" bind:value={newChapter.slug} class="w-full mt-2 p-2 border rounded" />
     <input placeholder="title" bind:value={newChapter.title} class="w-full mt-2 p-2 border rounded" />
     <input type="number" placeholder="number" bind:value={newChapter.number} class="w-full mt-2 p-2 border rounded" />
-    <button class="mt-3 px-3 py-2 border rounded" on:click={createChapter}>Create</button>
+    <button class="mt-3 admin-btn admin-btn-primary" on:click={createChapter}>Create</button>
   </div>
 </section>
 
@@ -209,7 +225,7 @@
   <h4 class="font-semibold mb-3">Authors</h4>
   <ul class="space-y-2">
     {#each authors as a}
-      <li class="p-3 border rounded">
+      <li class="admin-panel p-3">
         <div class="flex justify-between items-start gap-4">
           <div class="flex-1">
             {#if editingAuthor?.id === a.id}
@@ -218,18 +234,18 @@
               <input bind:value={editingAuthor.language} class="w-full p-2 border rounded mb-2" placeholder="Language" />
               <input bind:value={editingAuthor.short_bio} class="w-full p-2 border rounded" placeholder="Short bio" />
             {:else}
-              <div class="font-medium text-lg">{a.name} <span class="text-sm text-stone-500">({a.slug})</span></div>
-              {#if a.short_bio}<div class="text-sm text-stone-600 mt-1">{a.short_bio}</div>{/if}
-              {#if a.language}<div class="text-xs text-stone-500 mt-1">Language: {a.language}</div>{/if}
+              <div class="font-medium text-lg">{a.name} <span class="text-sm text-slate-400">({a.slug})</span></div>
+              {#if a.short_bio}<div class="text-sm text-slate-300 mt-1">{a.short_bio}</div>{/if}
+              {#if a.language}<div class="text-xs text-slate-400 mt-1">Language: {a.language}</div>{/if}
             {/if}
           </div>
           <div class="flex gap-2">
             {#if editingAuthor?.id === a.id}
-              <button on:click={() => updateAuthor(a.id)} class="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700">Save</button>
-              <button on:click={() => editingAuthor = null} class="px-3 py-1 text-sm border rounded hover:bg-stone-50">Cancel</button>
+              <button on:click={() => updateAuthor(a.id)} class="admin-btn admin-btn-primary">Save</button>
+              <button on:click={() => editingAuthor = null} class="admin-btn">Cancel</button>
             {:else}
-              <button on:click={() => editingAuthor = { ...a }} class="px-3 py-1 text-sm border rounded hover:bg-stone-50">Edit</button>
-              <button on:click={() => { selectedAuthorForWorks = a.id; loadWorks(a.slug); }} class="px-3 py-1 text-sm border rounded hover:bg-stone-50">
+              <button on:click={() => editingAuthor = { ...a }} class="admin-btn">Edit</button>
+              <button on:click={() => { selectedAuthorForWorks = a.id; loadWorks(a.slug); }} class="admin-btn">
                 View Works
               </button>
             {/if}
@@ -241,7 +257,7 @@
             <h5 class="text-sm font-semibold mb-2">Works for {a.name}</h5>
             <ul class="space-y-2">
               {#each works as w}
-                <li class="p-2 bg-stone-50 rounded">
+                <li class="p-2 bg-slate-900/55 rounded border border-slate-700">
                   <div class="flex justify-between items-start gap-3">
                     <div class="flex-1">
                       {#if editingWork?.id === w.id}
@@ -249,17 +265,17 @@
                         <input bind:value={editingWork.slug} class="w-full p-2 border rounded mb-2" placeholder="Slug" />
                         <input bind:value={editingWork.description} class="w-full p-2 border rounded" placeholder="Description" />
                       {:else}
-                        <div class="font-medium">{w.title} <span class="text-xs text-stone-500">({w.slug})</span></div>
-                        {#if w.description}<div class="text-xs text-stone-600 mt-1">{w.description}</div>{/if}
+                        <div class="font-medium">{w.title} <span class="text-xs text-slate-400">({w.slug})</span></div>
+                        {#if w.description}<div class="text-xs text-slate-300 mt-1">{w.description}</div>{/if}
                       {/if}
                     </div>
                     <div class="flex gap-2">
                       {#if editingWork?.id === w.id}
-                        <button on:click={() => updateWork(w.id)} class="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">Save</button>
-                        <button on:click={() => editingWork = null} class="px-2 py-1 text-xs border rounded hover:bg-white">Cancel</button>
+                        <button on:click={() => updateWork(w.id)} class="admin-btn admin-btn-primary">Save</button>
+                        <button on:click={() => editingWork = null} class="admin-btn">Cancel</button>
                       {:else}
-                        <button on:click={() => editingWork = { ...w }} class="px-2 py-1 text-xs border rounded hover:bg-white">Edit</button>
-                        <button on:click={() => { selectedWorkForChapters = w.id; loadChapters(a.slug, w.slug); }} class="px-2 py-1 text-xs border rounded hover:bg-white">
+                        <button on:click={() => editingWork = { ...w }} class="admin-btn">Edit</button>
+                        <button on:click={() => { selectedWorkForChapters = w.id; loadChapters(a.slug, w.slug); }} class="admin-btn">
                           View Chapters
                         </button>
                       {/if}
@@ -271,23 +287,23 @@
                       <h6 class="text-xs font-semibold mb-2">Chapters for {w.title}</h6>
                       <ul class="space-y-1">
                         {#each chapters as c}
-                          <li class="text-xs p-2 bg-white rounded">
+                          <li class="text-xs p-2 bg-slate-900/75 border border-slate-700 rounded">
                             {#if editingChapter?.id === c.id}
                               <div class="space-y-2">
                                 <input bind:value={editingChapter.title} class="w-full p-1 border rounded text-xs" placeholder="Title" />
                                 <input bind:value={editingChapter.slug} class="w-full p-1 border rounded text-xs" placeholder="Slug" />
                                 <input type="number" bind:value={editingChapter.number} class="w-full p-1 border rounded text-xs" placeholder="Number" />
                                 <div class="flex gap-2 mt-2">
-                                  <button on:click={() => updateChapter(c.id)} class="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700">Save</button>
-                                  <button on:click={() => editingChapter = null} class="px-2 py-1 text-xs border rounded hover:bg-stone-50">Cancel</button>
+                                  <button on:click={() => updateChapter(c.id)} class="admin-btn admin-btn-primary">Save</button>
+                                  <button on:click={() => editingChapter = null} class="admin-btn">Cancel</button>
                                 </div>
                               </div>
                             {:else}
                               <div class="flex justify-between items-center gap-2">
                                 <div>
-                                  <span class="font-medium">Ch {c.number}:</span> {c.title} <span class="text-stone-500">({c.slug})</span>
+                                  <span class="font-medium">Ch {c.number}:</span> {c.title} <span class="text-slate-400">({c.slug})</span>
                                 </div>
-                                <button on:click={() => editingChapter = { ...c }} class="px-2 py-1 text-xs border rounded hover:bg-stone-50">Edit</button>
+                                <button on:click={() => editingChapter = { ...c }} class="admin-btn">Edit</button>
                               </div>
                             {/if}
                           </li>

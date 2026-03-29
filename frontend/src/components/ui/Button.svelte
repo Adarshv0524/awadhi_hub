@@ -12,6 +12,7 @@
   {disabled}
   data-variant={variant}
   data-size={size}
+  data-disabled={disabled ? "true" : "false"}
   class={`ui-button ${className}`.trim()}
   on:click
   on:keydown

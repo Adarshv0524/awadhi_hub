@@ -55,10 +55,14 @@ const dohaDescription =
   doha.meaning
     ? String(doha.meaning).slice(0, 160)
     : `Doha by ${authorDisplay} on Awadhi New`;
+const dohaTitleSource = String(doha.main_text || `Doha #${id}`).replace(/\s+/g, " ").trim();
+const dohaSeoTitle = dohaTitleSource.length > 72
+  ? `${dohaTitleSource.slice(0, 69).trimEnd()}...`
+  : dohaTitleSource;
 ---
 
 <BaseLayout
-  title={`${doha.main_text} · Awadhi New`}
+  title={`${dohaSeoTitle} · Awadhi New`}
   description={dohaDescription}
   canonicalURL={dohaUrl}
 >
@@ -88,7 +92,7 @@ const dohaDescription =
     />
   </head>
   
-  <div class="max-w-3xl mx-auto px-4 py-8">
+  <div class="max-w-3xl mx-auto px-4 py-8 min-w-0">
     <!-- ✅ BREADCRUMBS: Show hierarchy path if available -->
     {doha.hierarchy_path && (
       <div class="mb-6">
@@ -137,7 +141,7 @@ const dohaDescription =
 
       <!-- Main Content -->
       <div>
-        <h1 class="text-3xl md:text-4xl font-serif leading-relaxed text-center text-slate-100 mb-4 break-words">
+        <h1 class="text-3xl md:text-4xl font-serif leading-relaxed text-center text-slate-100 mb-4 break-words prose-safe">
           {doha.main_text}
         </h1>
         
@@ -164,7 +168,7 @@ const dohaDescription =
       </div>
 
       {doha.meaning && (
-        <p class="text-lg text-slate-300 leading-relaxed text-center max-w-2xl mx-auto break-words">
+        <p class="text-lg text-slate-300 leading-relaxed text-center max-w-2xl mx-auto break-words prose-safe">
           {doha.meaning}
         </p>
       )}

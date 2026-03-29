@@ -6,7 +6,12 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "lint:deprecated-analytics": "node ./scripts/lint-deprecated-analytics.mjs",
+    "test:visual": "playwright test",
+    "test:visual:update": "playwright test --update-snapshots",
+    "test:integration": "playwright test -c playwright.integration.config.ts",
+    "test:e2e:admin": "playwright test -c playwright.e2e.config.ts"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.6",
@@ -14,9 +19,15 @@
     "@astrojs/svelte": "^7.2.4",
     "@tailwindcss/vite": "^4.1.18",
     "astro": "^5.16.6",
+    "echarts": "^5.6.0",
+    "echarts-gl": "^2.0.9",
     "svelte": "^5.46.1",
-    "valibot": "^0.42.1",
     "tailwindcss": "^4.1.18",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "valibot": "^0.42.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
   }
 }

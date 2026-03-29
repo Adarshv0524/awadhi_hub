@@ -66,7 +66,7 @@ const ogUrl = canonical || baseUrl;
   <body class="min-h-screen flex flex-col">
     <Header />
 
-    <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-8">
+    <main class="relative z-layer-base flex-1 max-w-6xl w-full mx-auto px-4 py-8 min-w-0 overflow-x-clip">
       <slot />
     </main>
 

@@ -109,6 +109,7 @@ def test_list_and_approve_submission(client, db):
         json={
             "note": "Looks good",
             "guideline_version": "v1",
+            "approved_by_human": True,
         },
     )
     assert r.status_code == 200
@@ -135,7 +136,7 @@ def test_reject_allows_later_edit_by_contributor(client, db):
     r = client.post(
         f"/moderation/submissions/{sub.id}/reject",
         headers={"Authorization": f"Bearer {mod_token}"},
-        json={"note": "Not accurate"},
+        json={"note": "Not accurate", "approved_by_human": True},
     )
     assert r.status_code == 200
     body = r.json()

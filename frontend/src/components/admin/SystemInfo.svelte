@@ -19,15 +19,15 @@
   });
 </script>
 
-<div class="bg-slate-800 border border-slate-700 rounded-lg p-4">
+<div class="admin-panel p-4">
   <div class="flex items-center justify-between mb-3">
-    <h3 class="font-semibold text-purple-400">⚙️ System Rate Limits</h3>
+    <h3 class="font-semibold text-slate-200">System Rate Limits</h3>
   </div>
 
   {#if loading}
     <p class="text-sm text-slate-500">Loading system settings...</p>
   {:else if error}
-    <p class="text-sm text-red-400">{error}</p>
+    <p class="text-sm admin-state-bad">{error}</p>
   {:else if rateLimits}
     <div class="bg-slate-900 rounded p-3 overflow-x-auto">
       <pre class="text-xs text-slate-300 font-mono">{JSON.stringify(rateLimits.value, null, 2)}</pre>

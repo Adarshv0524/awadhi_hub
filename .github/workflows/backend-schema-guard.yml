@@ -59,6 +59,15 @@ jobs:
       - name: Schema contract check
         run: python backend/scripts/schema_contract_check.py
 
+      - name: Strict Admin Contract Checks
+        run: pytest backend/tests/test_admin_openapi_contract.py backend/tests/test_admin_payload_contract.py -q
+
+      - name: Generate API Reference From OpenAPI
+        run: python backend/scripts/generate_api_reference.py
+
+      - name: Verify API Reference Is Up To Date
+        run: git diff --exit-code -- z_documentation/api/API_REFERENCE.md
+
       - name: Schema drift simulation (must fail)
         run: |
           if python backend/scripts/schema_contract_check.py --simulate-drift; then

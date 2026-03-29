@@ -1,7 +1,15 @@
 <script>
   import { onMount } from "svelte";
   import { api } from "../../lib/api";
-  import { getModerationQueue, approveSubmission, rejectSubmission, getCurrentUser } from "../../lib/admin";
+  import {
+    getModerationQueue,
+    approveSubmissionWithModelDecision,
+    rejectSubmissionWithModelDecision,
+    getCurrentUser,
+    getModerationSubmissionDetail,
+    getModerationTriage,
+    logModelDecision,
+  } from "../../lib/admin";
 
   let items = [];
   let loading = true;
@@ -13,6 +21,14 @@
   let limit = 50;
   let currentUser = null;
   let page = 1;
+  let detailOpen = false;
+  let detailLoading = false;
+  let detailError = "";
+  let detailSubmission = null;
+  let detailNote = "";
+  let detailRejectOpen = false;
+  let explicitHumanApproval = false;
+  let triageMap = new Map();
 
   // contributor id -> { id, username, email }
   let contributorsMap = new Map();
@@ -112,6 +128,14 @@
       // enrich contributors (best-effort)
       await enrichContributors(items);
 
+      try {
+        const triage = await getModerationTriage(Math.max(items.length, 20));
+        triageMap = new Map(triage.map((t) => [t.submission_id, t]));
+      } catch (triageErr) {
+        console.warn("[MOD-QUEUE] triage unavailable", triageErr);
+        triageMap = new Map();
+      }
+
       // reset selection
       selected = new Set();
 
@@ -135,14 +159,118 @@
     else selected.add(id);
   }
 
-  function viewDetail(id) {
-    window.location.href = `/moderation/${id}`;
+  async function viewDetail(id) {
+    detailOpen = true;
+    detailLoading = true;
+    detailError = "";
+    detailSubmission = null;
+    detailNote = "";
+    detailRejectOpen = false;
+    explicitHumanApproval = false;
+    try {
+      detailSubmission = await getModerationSubmissionDetail(id);
+    } catch (e) {
+      detailError = e?.message || "Failed to load moderation details";
+    } finally {
+      detailLoading = false;
+    }
+  }
+
+  function closeDetailPanel() {
+    detailOpen = false;
+    detailLoading = false;
+    detailError = "";
+    detailSubmission = null;
+    detailNote = "";
+    detailRejectOpen = false;
+    explicitHumanApproval = false;
+  }
+
+  async function approveFromDetail() {
+    if (!detailSubmission) return;
+    if (!explicitHumanApproval) {
+      detailError = "Explicit human approval checkbox is required for irreversible actions.";
+      return;
+    }
+    if (!confirm(`Approve submission #${detailSubmission.id}?`)) return;
+    try {
+      const triage = triageMap.get(detailSubmission.id);
+      await approveSubmissionWithModelDecision(detailSubmission.id, {
+        note: detailNote.trim() || "Approved from moderation detail panel",
+        guideline_version: "v1",
+        approved_by_human: true,
+        model_recommendation_id: triage?.recommendation_id,
+        model_confidence: triage?.confidence,
+        model_rationale_snippets: triage?.rationale_snippets || [],
+      });
+      if (triage?.recommendation_id) {
+        await logModelDecision({
+          recommendation_id: triage.recommendation_id,
+          use_case: "moderation_triage",
+          human_decision: "approve",
+          rationale: detailNote.trim() || "Approved by moderator",
+          reversible: false,
+          approved_by_human: true,
+          explainability_payload: triage.explainability || {},
+        });
+      }
+      await load();
+      closeDetailPanel();
+    } catch (e) {
+      detailError = e?.message || "Approval failed";
+    }
+  }
+
+  async function rejectFromDetail() {
+    if (!detailSubmission) return;
+    if (!explicitHumanApproval) {
+      detailError = "Explicit human approval checkbox is required for irreversible actions.";
+      return;
+    }
+    const note = detailNote.trim();
+    if (!note) {
+      detailError = "Rejection note is required";
+      return;
+    }
+    try {
+      const triage = triageMap.get(detailSubmission.id);
+      await rejectSubmissionWithModelDecision(detailSubmission.id, {
+        note,
+        approved_by_human: true,
+        model_recommendation_id: triage?.recommendation_id,
+        model_confidence: triage?.confidence,
+        model_rationale_snippets: triage?.rationale_snippets || [],
+      });
+      if (triage?.recommendation_id) {
+        await logModelDecision({
+          recommendation_id: triage.recommendation_id,
+          use_case: "moderation_triage",
+          human_decision: "reject",
+          rationale: note,
+          reversible: false,
+          approved_by_human: true,
+          explainability_payload: triage.explainability || {},
+        });
+      }
+      await load();
+      closeDetailPanel();
+    } catch (e) {
+      detailError = e?.message || "Rejection failed";
+    }
   }
 
   async function singleApprove(id) {
+    const triage = triageMap.get(id);
     if (!confirm("Approve submission #" + id + "?")) return;
     try {
-      await approveSubmission(id);
+      await approveSubmissionWithModelDecision(id, {
+        approved_by_human: true,
+        note: "Approved via queue quick action",
+        guideline_version: "v1",
+        model_recommendation_id: triage?.recommendation_id,
+        model_confidence: triage?.confidence,
+        model_rationale_snippets: triage?.rationale_snippets || [],
+      });
       await load();
     } catch (e) {
       alert("Approve failed: " + (e.message || e));
@@ -151,10 +279,17 @@
   }
 
   async function singleReject(id) {
+    const triage = triageMap.get(id);
     const reason = prompt("Rejection reason (required):");
     if (reason === null || !reason.trim()) return;
     try {
-      await rejectSubmission(id, reason);
+      await rejectSubmissionWithModelDecision(id, {
+        note: reason,
+        approved_by_human: true,
+        model_recommendation_id: triage?.recommendation_id,
+        model_confidence: triage?.confidence,
+        model_rationale_snippets: triage?.rationale_snippets || [],
+      });
       await load();
     } catch (e) {
       alert("Reject failed: " + (e.message || e));
@@ -254,6 +389,7 @@
         <th class="p-2">Assigned To</th>
         <th class="p-2">Contributor</th>
         <th class="p-2">Created</th>
+        <th class="p-2">AI Triage</th>
         <th class="p-2">Actions</th>
       </tr>
     </thead>
@@ -292,6 +428,17 @@
           </td>
           <td class="p-2">{it.created_at ? new Date(it.created_at).toLocaleString() : "—"}</td>
           <td class="p-2">
+            {#if triageMap.get(it.id)}
+              <div class="text-xs">
+                <div class="font-semibold">{Math.round((triageMap.get(it.id).confidence || 0) * 100)}%</div>
+                <div>{triageMap.get(it.id).recommendation}</div>
+                <div class="text-slate-500 line-clamp-2">{(triageMap.get(it.id).rationale_snippets || []).join("; ")}</div>
+              </div>
+            {:else}
+              <span class="text-slate-400">n/a</span>
+            {/if}
+          </td>
+          <td class="p-2">
             <div class="flex gap-2 flex-wrap">
               <button class="px-2 py-1 border rounded text-sm" on:click={() => viewDetail(it.id)}>View</button>
               <button class="px-2 py-1 bg-green-600 text-white rounded text-sm" on:click={() => singleApprove(it.id)}>Approve</button>
@@ -308,6 +455,89 @@
     <div class="flex items-center gap-2">
       <button class="px-3 py-1 border rounded disabled:opacity-40" on:click={goPrevPage} disabled={offset === 0}>Previous</button>
       <button class="px-3 py-1 border rounded disabled:opacity-40" on:click={goNextPage} disabled={items.length < limit}>Next</button>
+    </div>
+  </div>
+{/if}
+
+{#if detailOpen}
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+    on:click|self={closeDetailPanel}
+    on:keydown={(e) => e.key === "Escape" && closeDetailPanel()}
+  >
+    <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full mx-4 p-5 max-h-[90vh] overflow-auto">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-semibold">Moderation Detail</h2>
+        <button class="px-2 py-1 border rounded" on:click={closeDetailPanel}>Close</button>
+      </div>
+
+      {#if detailLoading}
+        <p>Loading full submission context…</p>
+      {:else if detailError}
+        <p class="text-red-600">{detailError}</p>
+      {:else if detailSubmission}
+        <div class="space-y-4">
+          <div class="grid grid-cols-2 gap-3 text-sm">
+            <p><strong>ID:</strong> {detailSubmission.id}</p>
+            <p><strong>Type:</strong> {detailSubmission.content_type}</p>
+            <p><strong>Status:</strong> {detailSubmission.status}</p>
+            <p><strong>Version:</strong> {detailSubmission.version}</p>
+            <p><strong>Contributor:</strong> {detailSubmission.contributor_id}</p>
+            <p><strong>Priority:</strong> {detailSubmission.priority}</p>
+            <p><strong>Author Slug:</strong> {detailSubmission.author_slug || "-"}</p>
+            <p><strong>Work Slug:</strong> {detailSubmission.work_slug || "-"}</p>
+            <p><strong>Chapter Slug:</strong> {detailSubmission.chapter_slug || "-"}</p>
+            <p><strong>Number in Chapter:</strong> {detailSubmission.number_in_chapter ?? "-"}</p>
+          </div>
+
+          <div>
+            <p class="text-sm font-semibold mb-1">Main Text</p>
+            <pre class="bg-stone-50 border p-2 rounded text-sm whitespace-pre-wrap">{detailSubmission.main_text || "-"}</pre>
+          </div>
+
+          <div>
+            <p class="text-sm font-semibold mb-1">Meaning</p>
+            <pre class="bg-stone-50 border p-2 rounded text-sm whitespace-pre-wrap">{detailSubmission.meaning || "-"}</pre>
+          </div>
+
+          <div>
+            <label for="moderation-detail-note" class="block text-sm font-semibold mb-1">Moderator Note</label>
+            <textarea
+              id="moderation-detail-note"
+              rows="3"
+              class="w-full border rounded p-2"
+              bind:value={detailNote}
+              placeholder="Add approval or rejection note"
+            ></textarea>
+          </div>
+
+          {#if detailSubmission && triageMap.get(detailSubmission.id)}
+            <div class="rounded border bg-slate-50 p-3 text-sm">
+              <p class="font-semibold">AI Recommendation: {triageMap.get(detailSubmission.id).recommendation}</p>
+              <p>Confidence: {Math.round((triageMap.get(detailSubmission.id).confidence || 0) * 100)}%</p>
+              <p class="text-slate-600">{(triageMap.get(detailSubmission.id).rationale_snippets || []).join("; ")}</p>
+            </div>
+          {/if}
+
+          <label class="inline-flex items-center gap-2 text-sm">
+            <input type="checkbox" bind:checked={explicitHumanApproval} />
+            <span>I confirm human approval for this irreversible moderation action.</span>
+          </label>
+
+          <div class="flex gap-2">
+            <button class="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700" on:click={approveFromDetail}>Approve</button>
+            {#if !detailRejectOpen}
+              <button class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700" on:click={() => detailRejectOpen = true}>Reject</button>
+            {:else}
+              <button class="px-3 py-1 bg-red-700 text-white rounded hover:bg-red-800" on:click={rejectFromDetail}>Confirm Reject</button>
+              <button class="px-3 py-1 border rounded" on:click={() => detailRejectOpen = false}>Cancel</button>
+            {/if}
+          </div>
+        </div>
+      {/if}
     </div>
   </div>
 {/if}

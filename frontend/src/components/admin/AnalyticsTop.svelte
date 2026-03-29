@@ -1,10 +1,11 @@
 <!-- src/components/admin/AnalyticsTop.svelte -->
 <script lang="ts">
   import { onMount } from "svelte";
-  import { fetchTopContent } from "../../lib/analytics";
+  import { fetchAdminContentPerformance } from "../../lib/analytics";
   import { downloadCSV } from "../../lib/csv";
 
   export let apiBase: string = "";
+  void apiBase;
 
   let loading = false;
   let error: string | null = null;
@@ -19,7 +20,7 @@
     loading = true;
     error = null;
     try {
-      const res = await fetchTopContent({
+      const res = await fetchAdminContentPerformance({
         content_type: contentType || undefined,
         limit,
         start_date: startDate || undefined,
@@ -27,6 +28,7 @@
       });
       // API returns array
       data = Array.isArray(res) ? res : res?.results ?? [];
+      page = 0;
     } catch (e: any) {
       console.error("[AnalyticsTop] load error", e);
       error = e?.message || "Failed to load top content";
@@ -70,7 +72,7 @@
       />
     </div>
     <button
-      class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-sm transition-colors font-medium shadow-lg"
+      class="admin-btn admin-btn-primary"
       on:click={load}
     >
       Apply Dates
@@ -80,7 +82,7 @@
   <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
     <div class="flex items-center gap-2">
       <label for="content-type" class="text-sm text-slate-400 font-medium">Content type</label>
-      <select id="content-type" bind:value={contentType} on:change={() => load()} class="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+      <select id="content-type" bind:value={contentType} on:change={() => load()} class="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-500">
         <option value="">All Types</option>
         <option value="doha">Doha</option>
         <option value="dictionary">Dictionary</option>
@@ -91,19 +93,19 @@
 
     <div class="flex items-center gap-2">
       <label for="limit-select" class="text-sm text-slate-400 font-medium">Show</label>
-      <select id="limit-select" bind:value={limit} on:change={() => load()} class="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+      <select id="limit-select" bind:value={limit} on:change={() => load()} class="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-500">
         <option value="10">10</option>
         <option value="20">20</option>
         <option value="50">50</option>
         <option value="100">100</option>
       </select>
 
-      <button on:click={load} class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded transition-colors font-medium">
+      <button on:click={load} class="admin-btn admin-btn-primary">
         🔄 Refresh
       </button>
       <button
         on:click={() => downloadCSV("analytics_top.csv", data)}
-        class="px-4 py-2 border border-slate-600 hover:border-cyan-500 hover:bg-slate-700 text-slate-200 rounded transition-colors font-medium"
+        class="admin-btn"
         disabled={data.length === 0}
       >
         📥 Export CSV
@@ -113,12 +115,12 @@
 
   {#if loading}
     <div class="mt-8 text-center">
-      <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-400"></div>
-      <p class="mt-4 text-sm text-cyan-400">Loading top content...</p>
+      <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-slate-400"></div>
+      <p class="mt-4 text-sm text-slate-300">Loading top content...</p>
     </div>
   {:else if error}
-    <div class="mt-4 p-4 bg-red-900/20 border border-red-700 rounded-lg">
-      <p class="text-sm text-red-400">⚠️ {error}</p>
+    <div class="mt-4 p-4 bg-rose-900/15 border border-rose-500/30 rounded-lg">
+      <p class="text-sm text-rose-200">⚠️ {error}</p>
     </div>
   {:else if data.length === 0}
     <div class="mt-4 p-8 text-center border-2 border-dashed border-slate-700 rounded-lg">
@@ -143,7 +145,7 @@
             <tr class="border-t border-slate-700/50 hover:bg-slate-700/30 transition-colors">
               <td class="px-4 py-3 text-slate-500 font-mono">{page * limit + i + 1}</td>
               <td class="px-4 py-3">
-                <span class="px-2 py-1 bg-blue-900/50 text-blue-300 rounded text-xs font-semibold uppercase tracking-wide">
+                <span class="px-2 py-1 bg-slate-900/70 text-slate-300 rounded text-xs font-semibold uppercase tracking-wide border border-slate-700">
                   {item.content_type}
                 </span>
               </td>
@@ -152,12 +154,12 @@
                   {item.title_or_text ?? item.main_text ?? item.text_devanagari ?? "Untitled"}
                 </div>
               </td>
-              <td class="px-4 py-3 text-right font-mono text-cyan-400 font-semibold">
+              <td class="px-4 py-3 text-right font-mono text-slate-200 font-semibold">
                 {Number(item.score ?? item.weight_score ?? 0).toFixed(2)}
               </td>
               <td class="px-4 py-3 text-right text-slate-300">{item.views?.toLocaleString() ?? "—"}</td>
-              <td class="px-4 py-3 text-right text-pink-400 font-medium">{(item.likes ?? item.likes_count)?.toLocaleString() ?? "—"}</td>
-              <td class="px-4 py-3 text-right text-indigo-400 font-medium">{item.search_hits?.toLocaleString() ?? "—"}</td>
+              <td class="px-4 py-3 text-right text-slate-300 font-medium">{(item.likes ?? item.likes_count)?.toLocaleString() ?? "—"}</td>
+              <td class="px-4 py-3 text-right text-slate-300 font-medium">{item.search_hits?.toLocaleString() ?? "—"}</td>
             </tr>
           {/each}
         </tbody>
@@ -170,14 +172,14 @@
       </div>
       <div class="flex gap-2">
         <button 
-          class="px-4 py-2 border border-slate-600 rounded hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 transition-colors"
+          class="admin-btn disabled:opacity-50 disabled:cursor-not-allowed"
           on:click={prevPage} 
           disabled={page === 0}
         >
           ← Previous
         </button>
         <button 
-          class="px-4 py-2 border border-slate-600 rounded hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-slate-200 transition-colors"
+          class="admin-btn disabled:opacity-50 disabled:cursor-not-allowed"
           on:click={nextPage} 
           disabled={(page + 1) * limit >= data.length}
         >

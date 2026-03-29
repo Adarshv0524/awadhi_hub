@@ -3,9 +3,9 @@
 import AdminLayout from "../../layouts/AdminLayout.astro";
 import SettingsTable from "../../components/admin/SettingsTable.svelte";
 export const prerender = false;
-const API_BASE = import.meta.env.PUBLIC_API_BASE ?? "";
+const API_BASE = import.meta.env.PUBLIC_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : "");
 ---
 <AdminLayout title="System Settings · Admin">
-  <h1 class="text-2xl font-serif mb-4">System Settings</h1>
+  <h1 class="admin-page-title">System Settings</h1>
   <SettingsTable apiBase={API_BASE} client:load />
 </AdminLayout>

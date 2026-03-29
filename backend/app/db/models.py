@@ -515,3 +515,69 @@ class AuditLog(Base):
         Index("ix_audit_created_at", "created_at"),
         Index("ix_audit_resourcetype_id", "resource_type", "resource_id"),
     )
+
+
+class AdminTelemetryEvent(Base):
+    """Append-only admin telemetry events with canonical event-level taxonomy."""
+
+    __tablename__ = "admin_telemetry_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String(36), nullable=False, unique=True, index=True)
+    event_ts_utc = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    session_id = Column(String(128), nullable=True, index=True)
+    request_id = Column(String(128), nullable=True, index=True)
+    actor_user_id = Column(Integer, nullable=True, index=True)
+    actor_role = Column(String(50), nullable=False, server_default="unknown", index=True)
+    module = Column(String(32), nullable=False, server_default="analytics", index=True)
+    action = Column(String(32), nullable=False, server_default="view", index=True)
+    resource_type = Column(String(64), nullable=True, index=True)
+    resource_id = Column(String(128), nullable=True, index=True)
+    before_state_hash = Column(String(128), nullable=True)
+    after_state_hash = Column(String(128), nullable=True)
+    result = Column(String(32), nullable=False, server_default="success", index=True)
+    error_code = Column(String(64), nullable=True, index=True)
+    latency_ms = Column(Float, nullable=True)
+    client_meta = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+    __table_args__ = (
+        Index("ix_admin_telemetry_ts_result", "event_ts_utc", "result"),
+        Index("ix_admin_telemetry_module_action", "module", "action"),
+        Index("ix_admin_telemetry_role_module", "actor_role", "module"),
+    )
+
+
+class ModelGovernanceEvent(Base):
+    """Immutable append-only events for model recommendations and human outcomes."""
+
+    __tablename__ = "model_governance_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    recommendation_id = Column(String(64), nullable=False, index=True)
+    event_type = Column(String(32), nullable=False, index=True)
+    use_case = Column(String(64), nullable=False, index=True)
+    model_name = Column(String(128), nullable=False)
+    model_version = Column(String(64), nullable=False)
+    actor_user_id = Column(Integer, nullable=True, index=True)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+    __table_args__ = (
+        Index("ix_model_gov_rec_type", "recommendation_id", "event_type"),
+        Index("ix_model_gov_use_case_created", "use_case", "created_at"),
+    )
+
+
+class DataRetentionPolicy(Base):
+    """Retention policy per event class for automated data lifecycle governance."""
+
+    __tablename__ = "data_retention_policies"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_class = Column(String(64), nullable=False, unique=True, index=True)
+    retention_days = Column(Integer, nullable=False)
+    delete_mode = Column(String(16), nullable=False, server_default="hard")
+    is_active = Column(Boolean, nullable=False, server_default="1")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

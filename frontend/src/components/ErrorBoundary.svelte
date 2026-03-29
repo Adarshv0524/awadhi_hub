@@ -53,7 +53,7 @@
 
 {#if showBoundary && !isDismissed}
   <div 
-    class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
+    class="fixed inset-0 bg-black/80 z-layer-overlay flex items-center justify-center p-4 backdrop-blur-sm"
     role="alert"
     aria-live="assertive"
   >

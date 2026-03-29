@@ -155,14 +155,25 @@
     };
     return headings[content_type.toLowerCase()] || "Related Content";
   }
+
+  function getSubtitle(): string {
+    const subtitles: Record<string, string> = {
+      doha: "Continue reading across adjacent verse and themes.",
+      dictionary: "Expand your vocabulary with connected lexical entries.",
+      idiom: "Explore neighboring idioms and proverb usage.",
+      article: "Discover adjacent long-form articles and references.",
+    };
+    return subtitles[content_type.toLowerCase()] || "Discover connected content across modules.";
+  }
 </script>
 
 {#if !loading && !error && items.length > 0}
   <section class="mt-8 bg-slate-800 border border-slate-700 rounded-lg p-6" aria-labelledby="recommendations-heading">
-    <h3 id="recommendations-heading" class="text-xl font-semibold text-{getTypeColor(content_type)}-400 mb-4 flex items-center gap-2">
+    <h3 id="recommendations-heading" class="text-xl font-semibold text-slate-100 mb-1 flex items-center gap-2">
       <span class="text-2xl">💡</span>
-      {getHeading()}
+      Related Content
     </h3>
+    <p class="mb-4 text-sm text-slate-400">{getSubtitle()}</p>
     
     <div class="grid grid-cols-1 gap-3">
       {#each items as item}

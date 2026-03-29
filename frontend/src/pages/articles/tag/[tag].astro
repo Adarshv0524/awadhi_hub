@@ -1,0 +1,58 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { api } from "../../../lib/api";
+import ArticleDiscoverySidebar from "../../../components/articles/ArticleDiscoverySidebar.svelte";
+
+const { tag } = Astro.params;
+const decodedTag = decodeURIComponent(String(tag || ""));
+const encodedTag = encodeURIComponent(decodedTag);
+
+let items: any[] = [];
+let error: string | null = null;
+
+try {
+  items = await api(`/articles/by-tag/${encodedTag}`);
+} catch (e) {
+  error = "Unable to load tagged articles.";
+  if (import.meta.env.DEV) console.error(e);
+}
+---
+
+<BaseLayout
+  title={`Articles tagged #${decodedTag} · Awadhi New`}
+  description={`Browse articles tagged with ${decodedTag}.`}
+>
+  <div class="grid gap-6 lg:grid-cols-[minmax(0,2fr),minmax(320px,1fr)]">
+    <section>
+      <div class="mb-6">
+        <a href="/articles" class="text-sm text-cyan-300 hover:text-cyan-200">← All articles</a>
+        <h1 class="mt-2 text-2xl font-serif">Tag: #{decodedTag}</h1>
+      </div>
+
+      {error && <p class="text-red-500">{error}</p>}
+
+      {!error && items.length === 0 && (
+        <div class="rounded-xl border border-slate-700 bg-slate-900/45 p-5 text-slate-300">
+          No articles found for this tag.
+        </div>
+      )}
+
+      {!error && items.length > 0 && (
+        <ul class="space-y-4">
+          {items.map((article) => (
+            <li class="rounded-xl border border-slate-700 bg-slate-900/45 p-4">
+              <a href={`/articles/${article.id}`} class="text-lg font-semibold text-slate-100 hover:text-cyan-300">
+                {article.title}
+              </a>
+              {article.excerpt && <p class="mt-2 text-sm text-slate-300">{article.excerpt}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+
+    <ArticleDiscoverySidebar activeTag={decodedTag} client:load />
+  </div>
+</BaseLayout>

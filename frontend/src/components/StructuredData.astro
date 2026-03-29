@@ -3,6 +3,7 @@
 // Helper component for adding JSON-LD structured data
 
 const { type, data } = Astro.props;
+const baseUrl = (import.meta.env.SITE || "https://awadhi.new").replace(/\/$/, "");
 
 let jsonLd = {};
 
@@ -26,7 +27,7 @@ if (type === "Article") {
       name: "Awadhi New",
       logo: {
         "@type": "ImageObject",
-        url: "https://awadhi.new/logo.png"
+        url: `${baseUrl}/favicon.svg`
       }
     },
     mainEntityOfPage: {

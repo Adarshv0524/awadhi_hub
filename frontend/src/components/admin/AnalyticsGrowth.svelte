@@ -1,11 +1,13 @@
 <!-- src/components/admin/AnalyticsGrowth.svelte -->
 <script lang="ts">
   import { onMount } from "svelte";
-  import { fetchGrowth } from "../../lib/analytics";
+  import { fetchAdminContributorTrends } from "../../lib/analytics";
   import { downloadCSV } from "../../lib/csv";
   import Sparkline from "./Sparkline.svelte";
+  import TimeSeriesChart from "./TimeSeriesChart.svelte";
 
   export let apiBase: string = "";
+  void apiBase;
 
   let loading = false;
   let error: string | null = null;
@@ -17,7 +19,7 @@
   async function load() {
     loading = true; error = null;
     try {
-      const res = await fetchGrowth({
+      const res = await fetchAdminContributorTrends({
         start_date: startDate || undefined,
         end_date: endDate || undefined,
       });
@@ -31,11 +33,11 @@
   }
 
   const metricColors: Record<string, string> = {
-    doha: "#22d3ee",
-    dictionary: "#60a5fa",
-    idiom: "#a78bfa",
-    article: "#f472b6",
-    users: "#34d399",
+    doha: "#7aa6d8",
+    dictionary: "#8eb7c3",
+    idiom: "#9aa6c7",
+    article: "#b59db8",
+    users: "#89b5a0",
   };
 
   onMount(load);
@@ -44,12 +46,12 @@
 <div>
   {#if loading}
     <div class="text-center py-8">
-      <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
-      <p class="mt-4 text-sm text-blue-400">Loading growth trends...</p>
+      <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-slate-400"></div>
+      <p class="mt-4 text-sm text-slate-300">Loading growth trends...</p>
     </div>
   {:else if error}
-    <div class="p-4 bg-red-900/20 border border-red-700 rounded-lg">
-      <p class="text-sm text-red-400">⚠️ {error}</p>
+    <div class="p-4 bg-rose-900/15 border border-rose-500/30 rounded-lg">
+      <p class="text-sm text-rose-200">⚠️ {error}</p>
     </div>
   {:else if growthData}
     <!-- Controls -->
@@ -58,22 +60,19 @@
         <input
           type="date"
           bind:value={startDate}
-          class="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
           placeholder="Start date"
           aria-label="Start date"
         />
         <input
           type="date"
           bind:value={endDate}
-          class="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="flex-1 bg-slate-700 border border-slate-600 rounded px-3 py-2 text-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
           placeholder="End date"
           aria-label="End date"
         />
       </div>
-      <button
-        class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm transition-colors font-medium shadow-lg"
-        on:click={load}
-      >
+      <button class="admin-btn admin-btn-primary" on:click={load}>
         Apply Dates
       </button>
     </div>
@@ -82,9 +81,9 @@
       <div class="flex gap-2">
         <button
           class="px-4 py-2 border border-slate-600 rounded text-sm transition-colors font-medium"
-          class:bg-blue-600={viewMode === "chart"}
-          class:border-blue-500={viewMode === "chart"}
-          class:text-white={viewMode === "chart"}
+          class:bg-slate-600={viewMode === "chart"}
+          class:border-slate-500={viewMode === "chart"}
+          class:text-slate-100={viewMode === "chart"}
           class:text-slate-200={viewMode !== "chart"}
           class:hover:bg-slate-700={viewMode !== "chart"}
           on:click={() => viewMode = "chart"}
@@ -93,9 +92,9 @@
         </button>
         <button
           class="px-4 py-2 border border-slate-600 rounded text-sm transition-colors font-medium"
-          class:bg-blue-600={viewMode === "table"}
-          class:border-blue-500={viewMode === "table"}
-          class:text-white={viewMode === "table"}
+          class:bg-slate-600={viewMode === "table"}
+          class:border-slate-500={viewMode === "table"}
+          class:text-slate-100={viewMode === "table"}
           class:text-slate-200={viewMode !== "table"}
           class:hover:bg-slate-700={viewMode !== "table"}
           on:click={() => viewMode = "table"}
@@ -105,7 +104,7 @@
       </div>
       
       <button
-        class="px-4 py-2 border border-slate-600 hover:border-blue-500 hover:bg-slate-700 text-slate-200 rounded text-sm transition-colors font-medium"
+        class="admin-btn"
         on:click={() => {
           if (!growthData) return;
           const rows = growthData.dates.map((d, i) => {
@@ -123,6 +122,11 @@
     {#if viewMode === "chart"}
       <!-- Chart View with Sparklines -->
       <div class="space-y-6">
+        <div class="bg-slate-900 rounded-lg p-5 border border-slate-700 shadow-lg">
+          <h3 class="mb-3 text-lg font-semibold text-slate-200">Combined Time-Series</h3>
+          <TimeSeriesChart dates={growthData.dates} series={growthData.series} colors={metricColors} />
+        </div>
+
         {#each Object.keys(growthData.series) as metric}
           {@const values = growthData.series[metric]}
           {@const total = values.reduce((sum, v) => sum + v, 0)}

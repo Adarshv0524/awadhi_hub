@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - backend/**
+      - frontend/**
       - .github/workflows/**
   push:
     branches:
       - main
     paths:
       - backend/**
+      - frontend/**
       - .github/workflows/**
 
 jobs:
@@ -57,5 +59,49 @@ jobs:
       - name: Schema Contract Check
         run: python backend/scripts/schema_contract_check.py
 
+      - name: Strict Admin Contract Tests
+        run: pytest backend/tests/test_admin_openapi_contract.py backend/tests/test_admin_payload_contract.py -q
+
+      - name: Deprecated Admin Endpoint Usage Check
+        run: python backend/scripts/check_admin_deprecated_usage.py
+
+      - name: Generate API Reference From OpenAPI
+        run: python backend/scripts/generate_api_reference.py
+
+      - name: Verify API Reference Is Up To Date
+        run: git diff --exit-code -- z_documentation/api/API_REFERENCE.md
+
       - name: Run backend tests
         run: pytest backend/tests -q
+
+  frontend-admin-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Lint Deprecated Analytics Paths
+        run: |
+          cd frontend
+          npm run lint:deprecated-analytics
+
+      - name: Install Playwright Browser
+        run: |
+          cd frontend
+          npx playwright install --with-deps chromium
+
+      - name: Run Admin E2E Smoke Tests
+        run: |
+          cd frontend
+          npm run test:e2e:admin

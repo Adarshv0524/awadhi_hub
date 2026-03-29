@@ -48,8 +48,12 @@ def SessionLocal():
 @pytest.fixture
 def db(SessionLocal):
     """
-    Yields a DB session per test.
+    Yields an isolated DB session per test.
+    Recreates schema each time to avoid cross-test state leakage.
     """
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+
     db = SessionLocal()
     try:
         yield db

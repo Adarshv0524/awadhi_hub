@@ -43,7 +43,8 @@ const title = user ? `${user.username} · Awadhi New` : `User ${username} · Awa
 const description = user 
   ? `View ${user.username}'s public profile on Awadhi New. Role: ${user.role}. Member since ${new Date(user.created_at).getFullYear()}.`
   : `User profile for ${username}`;
-const profileCanonicalUrl = `https://awadhi.new/users/${username}`;
+const baseUrl = (import.meta.env.SITE || "https://awadhi.new").replace(/\/$/, "");
+const profileCanonicalUrl = `${baseUrl}/users/${encodeURIComponent(username || "")}`;
 ---
 
 <BaseLayout title={title} description={description} canonicalURL={profileCanonicalUrl}>

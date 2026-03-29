@@ -3,9 +3,9 @@
 import AdminLayout from "../../layouts/AdminLayout.astro";
 import HierarchyEditor from "../../components/admin/HierarchyEditor.svelte";
 export const prerender = false;
-const API_BASE = import.meta.env.PUBLIC_API_BASE ?? "";
+const API_BASE = import.meta.env.PUBLIC_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : "");
 ---
 <AdminLayout title="Hierarchy · Admin">
-  <h1 class="text-2xl font-serif mb-4">Content Hierarchy</h1>
+  <h1 class="admin-page-title">Content Hierarchy</h1>
   <HierarchyEditor apiBase={API_BASE} client:load />
 </AdminLayout>

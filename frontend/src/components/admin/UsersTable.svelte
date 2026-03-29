@@ -169,13 +169,13 @@
   <p role="status" aria-live="polite">Loading users...</p>
 {:else}
   {#if info}
-    <p class="mb-3 text-green-500" role="status" aria-live="polite">{info}</p>
+    <p class="mb-3 admin-state-ok" role="status" aria-live="polite">{info}</p>
   {/if}
   {#if error}
-    <div class="mb-4 rounded border border-red-500/40 bg-red-900/20 p-3 text-red-300" role="alert" aria-live="assertive">
+    <div class="mb-4 rounded border border-rose-500/30 bg-rose-900/15 p-3 text-rose-200" role="alert" aria-live="assertive">
       <p class="font-semibold">Could not load users</p>
       <p class="text-sm mt-1">{error}</p>
-      <button class="mt-3 px-3 py-1 rounded bg-red-700 text-white" on:click={load}>Retry</button>
+      <button class="mt-3 admin-btn admin-btn-danger" on:click={load}>Retry</button>
     </div>
   {:else}
     <div class="mb-4 grid gap-3 md:grid-cols-12 md:items-end">
@@ -221,9 +221,9 @@
         </select>
       </div>
       <div class="md:col-span-2 flex gap-2 justify-end">
-        <button on:click={clearFilters} class="px-3 py-1 bg-gray-700 text-white rounded">Clear</button>
-        <button on:click={exportCsv} class="px-3 py-1 bg-green-700 text-white rounded" aria-label="Export current filtered users to CSV">Export CSV</button>
-        <button on:click={load} class="px-3 py-1 bg-cyan-700 text-white rounded">Refresh</button>
+        <button on:click={clearFilters} class="admin-btn">Clear</button>
+        <button on:click={exportCsv} class="admin-btn" aria-label="Export current filtered users to CSV">Export CSV</button>
+        <button on:click={load} class="admin-btn admin-btn-primary">Refresh</button>
       </div>
     </div>
 
@@ -235,7 +235,7 @@
         <button
           on:click={prevPage}
           disabled={currentPage === 1}
-          class="px-3 py-1 bg-gray-600 text-white rounded disabled:opacity-50"
+          class="admin-btn disabled:opacity-50"
           aria-label="Previous users page"
         >
           Previous
@@ -243,7 +243,7 @@
         <button
           on:click={nextPage}
           disabled={users.length < pageSize}
-          class="px-3 py-1 bg-gray-600 text-white rounded disabled:opacity-50"
+          class="admin-btn disabled:opacity-50"
           aria-label="Next users page"
         >
           Next
@@ -303,7 +303,7 @@
                   on:change={(e) => quickUpdate(u.id, 'is_active', e.target.checked)}
                   class="mr-2"
                 />
-                <span class={u.is_active ? 'text-green-500' : 'text-red-500'}>
+                <span class={u.is_active ? 'admin-state-ok' : 'admin-state-bad'}>
                   {u.is_active ? 'Active' : 'Inactive'}
                 </span>
               </label>
@@ -314,7 +314,7 @@
                   on:change={(e) => quickUpdate(u.id, 'is_banned', e.target.checked)}
                   class="mr-2"
                 />
-                <span class={u.is_banned ? 'text-red-500' : 'text-slate-400'}>
+                <span class={u.is_banned ? 'admin-state-bad' : 'text-slate-400'}>
                   {u.is_banned ? 'Banned' : 'Not banned'}
                 </span>
               </label>
@@ -323,7 +323,7 @@
             <td class="text-sm text-slate-400 px-2">{u.created_at ? new Date(u.created_at).toLocaleString() : "-"}</td>
             <td class="px-2">
               <button
-                class="text-blue-500 text-sm hover:underline"
+                class="text-slate-300 text-sm hover:underline"
                 on:click={() => openPermissions(u)}
                 aria-label={`Manage permissions for user ${u.id}`}
               >
@@ -342,8 +342,8 @@
 {#if showPermissionsModal && editingUser}
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
     <button class="absolute inset-0" aria-label="Close dialog" on:click={closePermissions}></button>
-    <div class="relative bg-slate-900 border-2 border-cyan-700 rounded-xl p-6 max-w-lg mx-4 shadow-2xl" role="dialog" aria-modal="true" aria-label="Manage user permissions">
-      <h3 class="text-xl font-bold text-cyan-400 mb-4">Manage User: {editingUser.username || editingUser.email}</h3>
+    <div class="relative bg-slate-900 border border-slate-600 rounded-xl p-6 max-w-lg mx-4 shadow-2xl" role="dialog" aria-modal="true" aria-label="Manage user permissions">
+      <h3 class="text-xl font-bold text-slate-100 mb-4">Manage User: {editingUser.username || editingUser.email}</h3>
       
       <div class="space-y-4">
         <!-- Role -->
@@ -411,7 +411,7 @@
         </div>
 
         <!-- Info Box -->
-        <div class="bg-blue-900/20 border border-blue-800/30 rounded p-3 text-xs text-blue-300">
+        <div class="bg-slate-900/70 border border-slate-700 rounded p-3 text-xs text-slate-300">
           <p class="mb-1"><strong>Tip:</strong> Changes apply immediately.</p>
           <p>Keep at least one active admin account with settings access.</p>
         </div>
@@ -420,13 +420,13 @@
       <div class="flex gap-3 justify-end mt-6">
         <button
           on:click={closePermissions}
-          class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded font-medium transition-colors"
+          class="admin-btn"
         >
           Cancel
         </button>
         <button
           on:click={savePermissions}
-          class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-medium transition-colors"
+          class="admin-btn admin-btn-primary"
         >
           Save Changes
         </button>

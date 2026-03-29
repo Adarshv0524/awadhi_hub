@@ -13,6 +13,17 @@ from app.services.audit_service import record_audit
 logger = logging.getLogger(__name__)
 
 _SETTINGS_CACHE = TTLCache(maxsize=1024, ttl=30)
+SETTINGS_IMPORT_SCHEMA_VERSION = 1
+CRITICAL_SETTING_KEYS = {
+    "rate_limits",
+    "ft_min_word_len",
+    "prometheus_enabled",
+    "enable_elasticsearch",
+    "audit_log_retention_days",
+    "backup_retention_days",
+    "backup_s3_bucket",
+    "sentry_dsn",
+}
 
 
 class RateLimitAction(BaseModel):
@@ -36,6 +47,34 @@ _VALIDATORS = {
     "backup_retention_days": int,
     "enable_elasticsearch": bool,
 }
+
+
+def _validate_setting_value(key: str, value: Any) -> list[str]:
+    errors: list[str] = []
+    if key not in _VALIDATORS:
+        return errors
+
+    validator = _VALIDATORS[key]
+    try:
+        if validator is int:
+            if not isinstance(value, int):
+                errors.append("expected integer value")
+        elif validator is bool:
+            if not isinstance(value, bool):
+                errors.append("expected boolean value")
+        elif validator is str:
+            if not isinstance(value, str):
+                errors.append("expected string value")
+        else:
+            validator.model_validate(value)
+    except ValidationError as e:
+        errors.append(str(e))
+
+    return errors
+
+
+def validate_setting_value(key: str, value: Any) -> list[str]:
+    return _validate_setting_value(key, value)
 
 
 def _from_env_if_exists(key: str) -> Optional[Any]:
@@ -86,22 +125,9 @@ def get_setting(
 
 
 def set_setting(db: Session, key: str, value: Any, actor_user_id: Optional[int] = None, metadata: Optional[Dict] = None) -> None:
-    if key in _VALIDATORS:
-        validator = _VALIDATORS[key]
-        try:
-            if validator is int:
-                if not isinstance(value, int):
-                    raise ValidationError.from_exception_data("value_error", [{"type": "int_type", "loc": ("value",), "input": value}])
-            elif validator is bool:
-                if not isinstance(value, bool):
-                    raise ValidationError.from_exception_data("value_error", [{"type": "bool_type", "loc": ("value",), "input": value}])
-            elif validator is str:
-                if not isinstance(value, str):
-                    raise ValidationError.from_exception_data("value_error", [{"type": "str_type", "loc": ("value",), "input": value}])
-            else:
-                validator.model_validate(value)
-        except ValidationError as e:
-            raise
+    validation_errors = _validate_setting_value(key, value)
+    if validation_errors:
+        raise ValueError("; ".join(validation_errors))
 
     try:
         existing = db.query(SystemSetting).filter(SystemSetting.setting_key == key).first()  # ✅ Changed from .key
@@ -196,3 +222,143 @@ def seed_defaults(db: Session):
         if not existing:
             db.add(SystemSetting(setting_key=k, value=v))  # ✅ Changed from key=k
     db.commit()
+
+
+def bulk_import_settings(
+    db: Session,
+    settings_payload: list[dict[str, Any]],
+    actor_user_id: Optional[int] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    existing_rows = db.query(SystemSetting).all()
+    existing_map = {row.setting_key: row for row in existing_rows}
+
+    report_items: list[dict[str, Any]] = []
+    invalid_count = 0
+    critical_count = 0
+
+    for idx, item in enumerate(settings_payload):
+        key = item.get("key")
+        value = item.get("value")
+        item_errors: list[str] = []
+
+        if not isinstance(key, str) or not key.strip():
+            item_errors.append("key must be a non-empty string")
+            key = f"__invalid_key_{idx}"
+
+        validation_errors = _validate_setting_value(key, value)
+        item_errors.extend(validation_errors)
+
+        current_row = existing_map.get(key)
+        current_value = current_row.value if current_row else None
+        is_critical = key in CRITICAL_SETTING_KEYS
+        if is_critical:
+            critical_count += 1
+
+        if item_errors:
+            invalid_count += 1
+            action = "invalid"
+        elif current_row is None:
+            action = "create"
+        elif current_value == value:
+            action = "noop"
+        else:
+            action = "update"
+
+        report_items.append(
+            {
+                "key": key,
+                "action": action,
+                "is_critical": is_critical,
+                "errors": item_errors,
+                "current_value": current_value,
+                "incoming_value": value,
+            }
+        )
+
+    valid_items = [it for it in report_items if not it["errors"]]
+    applyable_items = [it for it in valid_items if it["action"] in {"create", "update"}]
+
+    if dry_run:
+        return {
+            "summary": {
+                "total": len(report_items),
+                "valid": len(valid_items),
+                "invalid": invalid_count,
+                "critical": critical_count,
+                "applyable": len(applyable_items),
+            },
+            "items": report_items,
+            "applied": False,
+        }
+
+    if invalid_count > 0:
+        raise ValueError("Validation failed for one or more settings. Apply aborted.")
+
+    audit_meta = metadata or {}
+    audit_meta = audit_meta if isinstance(audit_meta, dict) else {"info": str(audit_meta)}
+
+    try:
+        for item in applyable_items:
+            key = item["key"]
+            value = item["incoming_value"]
+            existing = existing_map.get(key)
+            before_val = existing.value if existing else None
+
+            if existing:
+                existing.value = value
+                existing.updated_at = datetime.now(timezone.utc)
+            else:
+                new_row = SystemSetting(setting_key=key, value=value)
+                db.add(new_row)
+                existing_map[key] = new_row
+
+            try:
+                note_text = json.dumps({"key": key, "value": value, "bulk_import": True}, default=str)
+                db.add(
+                    ModerationLog(
+                        submission_id=0,
+                        moderator_id=int(actor_user_id) if actor_user_id else 0,
+                        action="system_setting:bulk_update",
+                        from_status=None,
+                        to_status=None,
+                        guideline_version=None,
+                        note=note_text,
+                    )
+                )
+            except Exception:
+                logger.exception("Failed to write moderation log during bulk import")
+
+            try:
+                record_audit(
+                    db=db,
+                    actor_user_id=actor_user_id,
+                    action="system_setting:bulk_update",
+                    resource_type="system_setting",
+                    resource_id=None,
+                    before=before_val,
+                    after=value,
+                    metadata={**audit_meta, "bulk_import": True},
+                )
+            except Exception:
+                logger.exception("Failed to write audit log during bulk import")
+
+            _SETTINGS_CACHE[key] = value
+
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return {
+        "summary": {
+            "total": len(report_items),
+            "valid": len(valid_items),
+            "invalid": invalid_count,
+            "critical": critical_count,
+            "applyable": len(applyable_items),
+        },
+        "items": report_items,
+        "applied": True,
+    }

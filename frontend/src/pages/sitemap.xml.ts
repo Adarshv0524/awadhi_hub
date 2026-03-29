@@ -9,30 +9,67 @@ interface SitemapUrl {
   priority: string;
 }
 
+type AnyRecord = Record<string, any>;
+
+const PAGE_SIZE = 200;
+const MAX_PAGES = 30;
+
+function getArrayPayload(payload: unknown): AnyRecord[] {
+  if (Array.isArray(payload)) return payload as AnyRecord[];
+  if (payload && typeof payload === "object" && Array.isArray((payload as AnyRecord).results)) {
+    return (payload as AnyRecord).results;
+  }
+  return [];
+}
+
+async function fetchPaginated(pathFactory: (offset: number, limit: number) => string): Promise<AnyRecord[]> {
+  const all: AnyRecord[] = [];
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const offset = page * PAGE_SIZE;
+    const payload = await api(pathFactory(offset, PAGE_SIZE));
+    const rows = getArrayPayload(payload);
+    if (rows.length === 0) break;
+    all.push(...rows);
+    if (rows.length < PAGE_SIZE) break;
+  }
+  return all;
+}
+
+function isPublicVisibility(value: unknown): boolean {
+  return value === undefined || value === null || value === "public";
+}
+
 export const GET: APIRoute = async () => {
   const baseUrl = (import.meta.env.SITE || "https://awadhi.new").replace(/\/$/, "");
   const urls: SitemapUrl[] = [];
+  const seenLocs = new Set<string>();
   const now = new Date().toISOString();
+
+  const pushUrl = (entry: SitemapUrl) => {
+    if (seenLocs.has(entry.loc)) return;
+    seenLocs.add(entry.loc);
+    urls.push(entry);
+  };
 
   try {
     // Static routes with proper priorities
-    urls.push(
+    [
       { loc: "/", lastmod: now, changefreq: "daily", priority: "1.0" },
       { loc: "/search", lastmod: now, changefreq: "daily", priority: "0.9" },
       { loc: "/doha", lastmod: now, changefreq: "daily", priority: "0.9" },
       { loc: "/dictionary", lastmod: now, changefreq: "daily", priority: "0.9" },
       { loc: "/idioms", lastmod: now, changefreq: "daily", priority: "0.9" },
       { loc: "/articles", lastmod: now, changefreq: "daily", priority: "0.9" },
-      { loc: "/submit", lastmod: now, changefreq: "monthly", priority: "0.7" },
-    );
+      { loc: "/authors", lastmod: now, changefreq: "weekly", priority: "0.8" },
+      { loc: "/about", lastmod: now, changefreq: "monthly", priority: "0.6" },
+    ].forEach(pushUrl);
 
     // Dynamic content - Doha entries
     try {
-      const dohas = await api("/content/doha?limit=1000&visibility=public");
-      const dohaArray = Array.isArray(dohas) ? dohas : dohas?.results || [];
-      dohaArray.forEach((d: any) => {
-        if (d.id && d.visibility === "public") {
-          urls.push({
+      const dohaArray = await fetchPaginated((offset, limit) => `/content/doha?offset=${offset}&limit=${limit}&visibility=public`);
+      dohaArray.forEach((d: AnyRecord) => {
+        if (d.id && isPublicVisibility(d.visibility)) {
+          pushUrl({
             loc: `/doha/${d.id}`,
             lastmod: d.updated_at || d.created_at || now,
             changefreq: "weekly",
@@ -46,11 +83,10 @@ export const GET: APIRoute = async () => {
 
     // Dynamic content - Dictionary entries
     try {
-      const dictEntries = await api("/dictionary?limit=1000&visibility=public");
-      const dictArray = Array.isArray(dictEntries) ? dictEntries : dictEntries?.results || [];
-      dictArray.forEach((d: any) => {
-        if (d.id && d.visibility === "public") {
-          urls.push({
+      const dictArray = await fetchPaginated((offset, limit) => `/dictionary?offset=${offset}&limit=${limit}&visibility=public`);
+      dictArray.forEach((d: AnyRecord) => {
+        if (d.id && isPublicVisibility(d.visibility)) {
+          pushUrl({
             loc: `/dictionary/${d.id}`,
             lastmod: d.updated_at || d.created_at || now,
             changefreq: "weekly",
@@ -64,11 +100,10 @@ export const GET: APIRoute = async () => {
 
     // Dynamic content - Idioms
     try {
-      const idioms = await api("/idioms?limit=1000&visibility=public");
-      const idiomsArray = Array.isArray(idioms) ? idioms : idioms?.results || [];
-      idiomsArray.forEach((i: any) => {
-        if (i.id && i.visibility === "public") {
-          urls.push({
+      const idiomsArray = await fetchPaginated((offset, limit) => `/idioms?offset=${offset}&limit=${limit}&visibility=public`);
+      idiomsArray.forEach((i: AnyRecord) => {
+        if (i.id && isPublicVisibility(i.visibility)) {
+          pushUrl({
             loc: `/idioms/${i.id}`,
             lastmod: i.updated_at || i.created_at || now,
             changefreq: "weekly",
@@ -82,11 +117,10 @@ export const GET: APIRoute = async () => {
 
     // Dynamic content - Articles
     try {
-      const articles = await api("/articles?limit=1000&visibility=public");
-      const articlesArray = Array.isArray(articles) ? articles : articles?.results || [];
-      articlesArray.forEach((a: any) => {
-        if (a.id && a.visibility === "public") {
-          urls.push({
+      const articlesArray = await fetchPaginated((offset, limit) => `/articles?offset=${offset}&limit=${limit}&visibility=public`);
+      articlesArray.forEach((a: AnyRecord) => {
+        if (a.id && isPublicVisibility(a.visibility)) {
+          pushUrl({
             loc: `/articles/${a.id}`,
             lastmod: a.updated_at || a.created_at || now,
             changefreq: "weekly",
@@ -96,6 +130,65 @@ export const GET: APIRoute = async () => {
       });
     } catch (e) {
       console.error("[Sitemap] Failed to fetch articles:", e);
+    }
+
+    // Author/work/chapter hierarchy routes
+    try {
+      const authorsPayload = await api("/authors");
+      const authors = getArrayPayload(authorsPayload);
+
+      for (const author of authors) {
+        const authorSlug = author?.slug;
+        if (!authorSlug) continue;
+
+        pushUrl({
+          loc: `/${authorSlug}`,
+          lastmod: author.updated_at || author.created_at || now,
+          changefreq: "weekly",
+          priority: "0.7",
+        });
+
+        try {
+          const worksPayload = await api(`/authors/${encodeURIComponent(authorSlug)}/works?offset=0&limit=500`);
+          const works = getArrayPayload(worksPayload);
+
+          for (const work of works) {
+            const workSlug = work?.slug;
+            if (!workSlug) continue;
+
+            pushUrl({
+              loc: `/${authorSlug}/${workSlug}`,
+              lastmod: work.updated_at || work.created_at || now,
+              changefreq: "weekly",
+              priority: "0.7",
+            });
+
+            try {
+              const chaptersPayload = await api(
+                `/authors/${encodeURIComponent(authorSlug)}/works/${encodeURIComponent(workSlug)}/chapters?offset=0&limit=500`
+              );
+              const chapters = getArrayPayload(chaptersPayload);
+
+              for (const chapter of chapters) {
+                const chapterSlug = chapter?.slug;
+                if (!chapterSlug) continue;
+                pushUrl({
+                  loc: `/${authorSlug}/${workSlug}/${chapterSlug}`,
+                  lastmod: chapter.updated_at || chapter.created_at || now,
+                  changefreq: "weekly",
+                  priority: "0.7",
+                });
+              }
+            } catch (e) {
+              console.error(`[Sitemap] Failed to fetch chapters for ${authorSlug}/${workSlug}:`, e);
+            }
+          }
+        } catch (e) {
+          console.error(`[Sitemap] Failed to fetch works for ${authorSlug}:`, e);
+        }
+      }
+    } catch (e) {
+      console.error("[Sitemap] Failed to fetch author hierarchy:", e);
     }
 
     // Generate XML with proper formatting

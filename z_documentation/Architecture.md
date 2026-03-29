@@ -184,6 +184,15 @@ Fan-out is conditional on active filter state, not unconditional multi-request s
 1. Build shared query parameters from user input.
 2. Spawn domain-specific requests only for eligible filters.
 3. Resolve all requests with per-section failure isolation.
+
+## 3.2.2 Article discovery flow
+
+Article discovery surfaces are now built around explicit discovery endpoints.
+
+1. Tag browser consumes GET /articles/tags/list and routes to tag pages backed by GET /articles/by-tag/{tag}.
+2. Recent article widgets consume GET /articles/recent/list.
+3. Freshness and distribution indicators consume GET /articles/stats.
+4. GET /articles/search/advanced remains deprecated until a dedicated advanced search UI is introduced.
 4. Render available sections even when one section fails.
 
 This behavior avoids full-page failure due to one downstream endpoint error.
@@ -206,6 +215,35 @@ Backend idiom validation enforces external_references.text_roman parity across l
 2. Role checks gate moderator/admin actions.
 3. Visibility and status filters prevent accidental exposure of non-public content.
 4. Rate limiting and bounded pagination reduce abuse surface for search-heavy routes.
+
+Admin authorization boundary and telemetry:
+
+1. Admin pages use a single guard boundary at the admin layout level; page-level duplicate guards are disallowed.
+2. Guard decisions (allow, deny, error) emit centralized policy telemetry to POST /api/v1/telemetry/auth-policy.
+3. Deny reasons are normalized (missing_token, missing_api_base, me_request_failed, insufficient_role, guard_exception) for consistent observability.
+4. Backend RBAC remains authoritative for all admin endpoints even when client guard is bypassed.
+
+SSR/CSR strategy:
+
+1. Current runtime uses CSR guard verification against /auth/me because browser token is stored in localStorage.
+2. For server-verified route gating, move auth to httpOnly cookie/session-backed strategy so Astro SSR can validate before render.
+3. Until cookie migration is complete, layout-level CSR guard plus backend RBAC is the canonical strategy.
+
+## 3.5 Analytics and monitoring integration
+
+Dark analytics APIs are now integrated across user-facing and admin surfaces.
+
+1. Live leaderboard connects to WS /analytics/ws/leaderboard for push updates.
+2. Leaderboard automatically degrades to polling GET /analytics/leaderboard every 30 seconds when WS is unavailable.
+3. Admin analytics dashboard consumes GET /analytics/growth with a time-series chart component.
+4. Admin demand panel consumes GET /analytics/demand for search distribution visibility.
+5. Global KPI cards consume GET /analytics/summary on admin and moderation landing screens.
+
+## 3.5.1 Baseline uptime monitoring
+
+1. Health endpoint is monitored at 60-second intervals through backend/scripts/health_monitor.mjs.
+2. Monitor targets GET /health and logs success, non-2xx responses, and network failures.
+3. Interval, timeout, and target URL are configurable through HEALTH_INTERVAL_MS, HEALTH_TIMEOUT_MS, and HEALTH_URL.
 
 ## 4) Presentation Layer
 
@@ -352,6 +390,108 @@ SEO tags are centralized in BaseLayout.astro with canonical, OpenGraph, and Twit
 ## 4.4.1 Metadata contract
 
 All pages should pass title and description through shared layout props to avoid duplicate tags and inconsistent SEO behavior.
+
+## 4.4.2 Admin operations and moderation UX integration
+
+Admin and moderation dashboards expose deeper operational flows through dedicated API integrations.
+
+Admin settings and audit capabilities:
+
+1. System settings screen renders full configuration table from GET /admin/system_settings.
+2. Settings import uses POST /admin/system_settings/import with schema_version, dry_run preview, validation report, and atomic apply.
+3. Critical setting keys require explicit confirmation text before apply.
+4. Audit logs support CSV export through GET /admin/audit_logs/export/csv.
+5. Audit rows expose modal detail inspection via GET /admin/audit_logs/{id} for before/after payloads and metadata.
+
+Admin user and audit contract guardrails:
+
+1. User role and activation changes must use PATCH /admin/users/{user_id}; there are no /role or /deactivate sub-routes.
+2. Audit list/detail contracts are actor-centric and expose actor_user_id, before, after, and metadata as canonical fields.
+3. Frontend admin wrapper paths are validated by an automated contract test against FastAPI route inventory to prevent stale route drift.
+4. Frontend admin audit responses are validated at the response boundary using runtime schema checks.
+
+Hierarchy and analytics contract guardrails:
+
+1. Chapter contracts are standardized on number in backend and frontend wrappers; legacy order_num payloads are invalid.
+2. Admin analytics primary contract is /admin/analytics/v2/* for top, growth, demand, and summary.
+3. Legacy analytics endpoints remain fallback-only and are considered deprecated contract paths.
+4. Frontend cutover uses feature flag PUBLIC_ADMIN_ANALYTICS_V2 with fallback telemetry emitted to /api/v1/telemetry/admin-analytics-cutover.
+
+Hierarchy management behavior:
+
+1. Inline edits for authors, works, and chapters use PATCH endpoints under /admin/hierarchy.
+2. UI applies optimistic updates and rolls back on failed save.
+3. Author, work, and chapter grids remain in-page without hard page reload navigation.
+
+Moderation detail behavior:
+
+1. Queue row selection opens dedicated moderation detail panel.
+2. Panel fetches full context with GET /moderation/submissions/{submission_id} before showing decision actions.
+3. Approve and reject actions are executed from the detail panel with explicit moderator notes.
+
+## 4.5 Frontend Design System & Stacking Context
+
+This section defines non-negotiable UI layering and styling rules for Astro and Svelte surfaces.
+
+### 4.5.1 Global Z-Index Scale
+
+All layered UI must use the shared scale to prevent random z-index collisions:
+
+1. Base content: z-0
+2. Floating controls and mobile sheets: z-30
+3. Dropdowns and popovers: z-40
+4. Sticky/fixed header and navigation shell: z-50
+5. Blocking overlays/modals/error boundaries: z-100
+
+Implementation note:
+
+1. Global CSS variables define this scale and utility classes map to each layer.
+2. New components must consume shared layer classes rather than inline arbitrary values.
+
+### 4.5.2 Stacking Context Rules
+
+1. Header shell must be isolated and overflow-visible so menu/popover layers can render above page content.
+2. Main content area must remain at base layer and avoid creating unnecessary high-z positioned wrappers.
+3. Dropdown containers must render within the designated dropdown layer and never rely on ad hoc z-[9999] patches.
+4. Overlays (modals, blockers, global error boundaries) must always use the overlay layer.
+
+### 4.5.3 Semantic Color and Typography Tokens
+
+1. Colors must be sourced from semantic tokens (surface, border, foreground, accent) rather than scattered hardcoded hex values.
+2. Interactive states (hover, active, focus-visible) must preserve contrast and remain visible in low-light backgrounds.
+3. Typography hierarchy must use shared headline and body token families.
+4. Reusable primitives (Button, Card, Badge, Nav link) are the default style entry point for new UI.
+
+### 4.5.4 Responsive Overflow Safety Rules
+
+1. Core reading containers must set min-width: 0 and max-width: 100% semantics to avoid mobile overflow.
+2. Long text surfaces must use break-word/overflow-wrap safeguards.
+3. Wide content blocks must use horizontal scroll wrappers on narrow viewports.
+4. Mobile menus must expand as overlays/sheets, not push root layout width beyond viewport.
+
+### 4.5.5 Visual Regression Guardrails
+
+Before merging UI changes:
+
+1. Validate dropdown, mobile menu, and overlay stacking on at least one content-heavy page.
+2. Verify no horizontal scrollbar appears on common mobile breakpoints.
+3. Confirm nav, buttons, cards, and auth menus use tokenized classes only.
+
+Admin layout maintainability baseline:
+
+1. Admin layout styling is scoped via tokenized classes (admin-shell, admin-nav-link, admin-main, admin-topbar) and must not use blanket :global element selectors.
+2. Avoid !important in admin layout styling except for narrowly-justified third-party compatibility fixes.
+3. Core admin page visual snapshots are maintained under frontend/tests/visual to catch style regressions before merge.
+
+## 4.6 Content discovery and cross-recommendation UX
+
+The reader experience includes cross-module discovery for article, dictionary, idiom, and work pages.
+
+1. Work landing pages hydrate author and work context from GET /authors/{author_slug} and GET /authors/{author_slug}/works/{work_slug}.
+2. Work chapter lists continue to load from GET /authors/{author_slug}/works/{work_slug}/chapters with chapter and poetry node counts.
+3. Dictionary, idiom, and article detail pages consume /content/{type}/{entry_id}/navigation for previous and next controls.
+4. Related content blocks at the bottom of dictionary, idiom, and article pages consume GET /recommendations/{content_type}/{content_id}.
+5. Recommendation rendering is non-blocking and degrades gracefully when the endpoint returns empty or partial data.
 
 ## 5) Boundary Contracts
 
