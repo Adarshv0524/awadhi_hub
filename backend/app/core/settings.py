@@ -14,7 +14,7 @@ class Settings:
 
     # App
     APP_ENV: str = os.getenv("APP_ENV", "development")
-    APP_DEBUG: bool = os.getenv("APP_DEBUG", "true").lower() in ("1","true","yes")
+    APP_DEBUG: bool = os.getenv("APP_DEBUG", "false").lower() in ("1","true","yes")
 
     # JWT
     JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "replace-me")
@@ -24,7 +24,7 @@ class Settings:
     PASSWORD_RESET_TOKEN_EXPIRES_SECONDS: int = int(os.getenv("PASSWORD_RESET_TOKEN_EXPIRES_SECONDS", "3600"))
 
     # Frontend URL (used in transactional email links)
-    FRONTEND_BASE_URL: str = os.getenv("FRONTEND_BASE_URL", "http://localhost:4321")
+    FRONTEND_BASE_URL: str = os.getenv("FRONTEND_BASE_URL", "https://awadhi.new")
 
     # Email (SMTP)
     SMTP_ENABLED: bool = os.getenv("SMTP_ENABLED", "false").lower() in ("1", "true", "yes")

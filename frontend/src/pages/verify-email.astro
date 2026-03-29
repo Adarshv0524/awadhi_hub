@@ -1,0 +1,149 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+export const prerender = false;
+---
+
+<BaseLayout title="Verify Email · Awadhi New">
+  <meta name="robots" content="noindex,nofollow" />
+
+  <div class="max-w-md mx-auto mt-12 px-4">
+    <h1 class="text-2xl font-serif mb-3">Verify Email</h1>
+    <p class="text-sm text-gray-300 mb-6">Enter the 6-digit OTP sent to your email address.</p>
+
+    <form id="verifyForm" class="space-y-4" method="POST" action="javascript:void(0)" novalidate>
+      <div>
+        <label class="block text-sm mb-1">Email</label>
+        <input id="emailInput" name="email" type="email" required class="w-full border px-3 py-2 rounded bg-gray-800 text-white" />
+      </div>
+
+      <div>
+        <label class="block text-sm mb-1">User ID</label>
+        <input id="userIdInput" name="user_id" type="number" required class="w-full border px-3 py-2 rounded bg-gray-800 text-white" />
+      </div>
+
+      <div>
+        <label class="block text-sm mb-1">OTP</label>
+        <input id="otpInput" name="otp" type="text" inputmode="numeric" maxlength="6" required class="w-full border px-3 py-2 rounded bg-gray-800 text-white" placeholder="Enter 6-digit code" />
+      </div>
+
+      <button id="verifyBtn" type="submit" class="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition-colors disabled:opacity-50">
+        Verify Email
+      </button>
+
+      <button id="resendBtn" type="button" class="w-full bg-gray-700 text-white py-2 rounded hover:bg-gray-600 transition-colors disabled:opacity-50">
+        Resend OTP
+      </button>
+
+      <p id="error" class="text-red-600 text-sm hidden"></p>
+      <p id="success" class="text-green-600 text-sm hidden"></p>
+    </form>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const form = document.getElementById("verifyForm") as HTMLFormElement | null;
+      const emailInput = document.getElementById("emailInput") as HTMLInputElement | null;
+      const userIdInput = document.getElementById("userIdInput") as HTMLInputElement | null;
+      const otpInput = document.getElementById("otpInput") as HTMLInputElement | null;
+      const verifyBtn = document.getElementById("verifyBtn") as HTMLButtonElement | null;
+      const resendBtn = document.getElementById("resendBtn") as HTMLButtonElement | null;
+      const errorEl = document.getElementById("error") as HTMLParagraphElement | null;
+      const successEl = document.getElementById("success") as HTMLParagraphElement | null;
+
+      if (!form || !emailInput || !userIdInput || !otpInput || !verifyBtn || !resendBtn || !errorEl || !successEl) {
+        return;
+      }
+
+      const errorNode = errorEl as HTMLParagraphElement;
+      const successNode = successEl as HTMLParagraphElement;
+
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get("mode") || "register";
+      const qEmail = params.get("email") || "";
+      const qUserId = params.get("user_id") || "";
+
+      if (qEmail) emailInput.value = qEmail;
+      if (qUserId) userIdInput.value = qUserId;
+
+      function clearMessages() {
+        errorNode.classList.add("hidden");
+        successNode.classList.add("hidden");
+      }
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        clearMessages();
+
+        const email = emailInput.value.trim();
+        const userId = Number(userIdInput.value);
+        const otp = otpInput.value.trim();
+
+        if (!email || !userId || otp.length !== 6) {
+          errorNode.textContent = "Please provide valid email, user ID, and 6-digit OTP.";
+          errorNode.classList.remove("hidden");
+          return;
+        }
+
+        verifyBtn.disabled = true;
+        try {
+          const API_BASE = import.meta.env.PUBLIC_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : "");
+          const res = await fetch(API_BASE + "/auth/verify-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: userId, email, otp }),
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(payload?.detail || payload?.message || "Verification failed");
+
+          successNode.textContent = payload?.message || "Email verified successfully.";
+          successNode.classList.remove("hidden");
+
+          setTimeout(() => {
+            if (mode === "change") {
+              window.location.href = "/dashboard";
+            } else {
+              window.location.href = "/dashboard";
+            }
+          }, 900);
+        } catch (err: any) {
+          errorNode.textContent = err?.message || "Verification failed";
+          errorNode.classList.remove("hidden");
+        } finally {
+          verifyBtn.disabled = false;
+        }
+      });
+
+      resendBtn.addEventListener("click", async () => {
+        clearMessages();
+        const email = emailInput.value.trim();
+        const userId = Number(userIdInput.value);
+
+        if (!email || !userId) {
+          errorNode.textContent = "Email and user ID are required to resend OTP.";
+          errorNode.classList.remove("hidden");
+          return;
+        }
+
+        resendBtn.disabled = true;
+        try {
+          const API_BASE = import.meta.env.PUBLIC_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : "");
+          const res = await fetch(API_BASE + "/auth/resend-email-otp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: userId, email }),
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(payload?.detail || payload?.message || "Resend failed");
+
+          successNode.textContent = payload?.message || "Verification OTP sent.";
+          successNode.classList.remove("hidden");
+        } catch (err: any) {
+          errorNode.textContent = err?.message || "Resend failed";
+          errorNode.classList.remove("hidden");
+        } finally {
+          resendBtn.disabled = false;
+        }
+      });
+    });
+  </script>
+</BaseLayout>

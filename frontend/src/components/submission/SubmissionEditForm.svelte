@@ -63,7 +63,7 @@
     }
   }
 
-  function getAuthHeader() {
+  function getAuthHeader(): Record<string, string> {
     if (typeof window === "undefined") return {};
     const token = localStorage.getItem("token");
     return token ? { Authorization: `Bearer ${token}` } : {};
@@ -294,8 +294,8 @@
     {/if}
 
     <div>
-      <label class="block font-medium mb-2">Content Type</label>
-      <select bind:value={content_type} class="w-full p-2 border rounded" disabled>
+      <label for="content-type" class="block font-medium mb-2">Content Type</label>
+      <select id="content-type" bind:value={content_type} class="w-full p-2 border rounded" disabled>
         <option value="doha">Doha</option>
         <option value="dictionary">Dictionary Entry</option>
         <option value="idiom">Idiom/Saying</option>
@@ -306,32 +306,32 @@
 
     {#if content_type === "dictionary"}
       <div>
-        <label class="block font-medium mb-2">Lemma (Devanagari) *</label>
-        <input type="text" bind:value={lemma_devanagari} required class="w-full p-2 border rounded" placeholder="शब्द" />
+        <label for="lemma-devanagari" class="block font-medium mb-2">Lemma (Devanagari) *</label>
+        <input id="lemma-devanagari" type="text" bind:value={lemma_devanagari} required class="w-full p-2 border rounded" placeholder="शब्द" />
       </div>
       <div>
-        <label class="block font-medium mb-2">Lemma (Roman)</label>
-        <input type="text" bind:value={lemma_roman} class="w-full p-2 border rounded" placeholder="shabd" />
+        <label for="lemma-roman" class="block font-medium mb-2">Lemma (Roman)</label>
+        <input id="lemma-roman" type="text" bind:value={lemma_roman} class="w-full p-2 border rounded" placeholder="shabd" />
       </div>
     {:else if content_type === "article"}
       <div>
-        <label class="block font-medium mb-2">Title *</label>
-        <input type="text" bind:value={title} required class="w-full p-2 border rounded" placeholder="Article title" />
+        <label for="article-title" class="block font-medium mb-2">Title *</label>
+        <input id="article-title" type="text" bind:value={title} required class="w-full p-2 border rounded" placeholder="Article title" />
       </div>
       <div>
-        <label class="block font-medium mb-2">Excerpt</label>
-        <textarea bind:value={excerpt} rows="3" class="w-full p-2 border rounded" placeholder="Brief summary"></textarea>
+        <label for="article-excerpt" class="block font-medium mb-2">Excerpt</label>
+        <textarea id="article-excerpt" bind:value={excerpt} rows="3" class="w-full p-2 border rounded" placeholder="Brief summary"></textarea>
       </div>
     {/if}
 
     <div>
-      <label class="block font-medium mb-2">Main Text *</label>
-      <textarea bind:value={main_text} required rows="4" class="w-full p-2 border rounded" placeholder="Enter main text"></textarea>
+      <label for="main-text" class="block font-medium mb-2">Main Text *</label>
+      <textarea id="main-text" bind:value={main_text} required rows="4" class="w-full p-2 border rounded" placeholder="Enter main text"></textarea>
     </div>
 
     <div>
-      <label class="block font-medium mb-2">Meaning / Translation *</label>
-      <textarea bind:value={meaning} required rows="4" class="w-full p-2 border rounded" placeholder="Enter meaning"></textarea>
+      <label for="meaning" class="block font-medium mb-2">Meaning / Translation *</label>
+      <textarea id="meaning" bind:value={meaning} required rows="4" class="w-full p-2 border rounded" placeholder="Enter meaning"></textarea>
     </div>
 
     {#if content_type === "idiom"}
@@ -347,13 +347,13 @@
         />
       </div>
       <div>
-        <label class="block font-medium mb-2">Usage Example</label>
-        <textarea bind:value={usage_example} rows="3" class="w-full p-2 border rounded" placeholder="Example usage"></textarea>
+        <label for="usage-example" class="block font-medium mb-2">Usage Example</label>
+        <textarea id="usage-example" bind:value={usage_example} rows="3" class="w-full p-2 border rounded" placeholder="Example usage"></textarea>
       </div>
     {:else if content_type === "article"}
       <div>
-        <label class="block font-medium mb-2">Content (Full article body)</label>
-        <textarea bind:value={content} rows="8" class="w-full p-2 border rounded" placeholder="Full article content"></textarea>
+        <label for="article-content" class="block font-medium mb-2">Content (Full article body)</label>
+        <textarea id="article-content" bind:value={content} rows="8" class="w-full p-2 border rounded" placeholder="Full article content"></textarea>
       </div>
     {/if}
 
@@ -364,8 +364,8 @@
 
     {#if is_classical}
       <div>
-        <label class="block font-medium mb-2">Author</label>
-        <select bind:value={selected_author_slug} on:change={() => loadWorks(selected_author_slug)} class="w-full p-2 border rounded">
+        <label for="author-select" class="block font-medium mb-2">Author</label>
+        <select id="author-select" bind:value={selected_author_slug} on:change={() => loadWorks(selected_author_slug)} class="w-full p-2 border rounded">
           <option value="">-- Select Author --</option>
           {#each authors as author}
             <option value={author.slug}>{author.name}</option>
@@ -375,8 +375,8 @@
 
       {#if selected_author_slug && works.length > 0}
         <div>
-          <label class="block font-medium mb-2">Work</label>
-          <select bind:value={selected_work_slug} on:change={() => loadChapters(selected_author_slug, selected_work_slug)} class="w-full p-2 border rounded">
+          <label for="work-select" class="block font-medium mb-2">Work</label>
+          <select id="work-select" bind:value={selected_work_slug} on:change={() => loadChapters(selected_author_slug, selected_work_slug)} class="w-full p-2 border rounded">
             <option value="">-- Select Work --</option>
             {#each works as work}
               <option value={work.slug}>{work.title}</option>
@@ -387,8 +387,8 @@
 
       {#if selected_work_slug && chapters.length > 0}
         <div>
-          <label class="block font-medium mb-2">Chapter</label>
-          <select bind:value={selected_chapter_slug} class="w-full p-2 border rounded">
+          <label for="chapter-select" class="block font-medium mb-2">Chapter</label>
+          <select id="chapter-select" bind:value={selected_chapter_slug} class="w-full p-2 border rounded">
             <option value="">-- Select Chapter --</option>
             {#each chapters as chapter}
               <option value={chapter.slug}>{chapter.title}</option>
@@ -398,24 +398,24 @@
       {/if}
 
       <div>
-        <label class="block font-medium mb-2">Number in Chapter</label>
-        <input type="number" bind:value={number_in_chapter} min="1" class="w-full p-2 border rounded" placeholder="e.g., 1" />
+        <label for="number-in-chapter" class="block font-medium mb-2">Number in Chapter</label>
+        <input id="number-in-chapter" type="number" bind:value={number_in_chapter} min="1" class="w-full p-2 border rounded" placeholder="e.g., 1" />
       </div>
     {:else}
       <div>
-        <label class="block font-medium mb-2">Author Name (Free-text)</label>
-        <input type="text" bind:value={free_author_name} class="w-full p-2 border rounded" placeholder="e.g., Anonymous folk tradition" />
+        <label for="author-free" class="block font-medium mb-2">Author Name (Free-text)</label>
+        <input id="author-free" type="text" bind:value={free_author_name} class="w-full p-2 border rounded" placeholder="e.g., Anonymous folk tradition" />
       </div>
     {/if}
 
     <div>
-      <label class="block font-medium mb-2">External References</label>
-      <textarea bind:value={external_refs} rows="2" class="w-full p-2 border rounded" placeholder="URLs, citations, etc."></textarea>
+      <label for="external-refs" class="block font-medium mb-2">External References</label>
+      <textarea id="external-refs" bind:value={external_refs} rows="2" class="w-full p-2 border rounded" placeholder="URLs, citations, etc."></textarea>
     </div>
 
     <div>
-      <label class="block font-medium mb-2">Visibility</label>
-      <select bind:value={visibility} class="w-full p-2 border rounded">
+      <label for="visibility" class="block font-medium mb-2">Visibility</label>
+      <select id="visibility" bind:value={visibility} class="w-full p-2 border rounded">
         <option value="private">Private (draft)</option>
         <option value="public">Public (submit for moderation)</option>
       </select>

@@ -287,12 +287,12 @@
 {:else if error}
   <p class="admin-state-bad">{error}</p>
 {:else}
-  <div class="mb-4 flex justify-between items-center">
+  <div class="mb-4 flex flex-col gap-3 lg:flex-row lg:justify-between lg:items-center">
     <p class="text-sm text-slate-300">
       System-wide configuration settings. These control application behavior, feature flags, and limits.
       Values can be JSON objects, arrays, numbers, strings, or booleans.
     </p>
-    <div class="flex gap-2">
+    <div class="flex flex-wrap gap-2">
       <button 
         on:click={exportSettings}
         class="admin-btn text-sm flex items-center gap-2"
@@ -339,7 +339,7 @@
         <div class="rounded border border-slate-700 p-2">Critical: <strong>{importPreview.summary?.critical ?? 0}</strong></div>
       </div>
 
-      <div class="max-h-64 overflow-auto rounded border border-slate-700">
+      <div class="admin-table-wrap max-h-64 overflow-auto rounded border border-slate-700">
         <table class="w-full border-collapse text-xs">
           <thead>
             <tr class="border-b border-slate-700 text-left">
@@ -393,17 +393,18 @@
   {#if settings.length === 0}
     <p class="text-slate-400">No settings configured.</p>
   {:else}
-    <table class="w-full border-collapse">
-      <thead>
-        <tr class="text-left border-b">
-          <th class="py-2 px-3 font-semibold">Key</th>
-          <th class="py-2 px-3 font-semibold">Value</th>
-          <th class="py-2 px-3 font-semibold">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each settings as s}
-          <tr class="border-b border-slate-700/70 hover:bg-slate-800/35">
+    <div class="admin-table-wrap">
+      <table class="w-full border-collapse">
+        <thead>
+          <tr class="text-left border-b">
+            <th class="py-2 px-3 font-semibold">Key</th>
+            <th class="py-2 px-3 font-semibold">Value</th>
+            <th class="py-2 px-3 font-semibold">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each settings as s}
+            <tr class="border-b border-slate-700/70 hover:bg-slate-800/35">
             <td class="py-3 px-3">
               <code class="text-sm font-mono bg-slate-900/65 px-2 py-1 rounded">{s.key}</code>
             </td>
@@ -439,9 +440,10 @@
                 </div>
               {/if}
             </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
   {/if}
 {/if}

@@ -14,7 +14,7 @@
       'idiom': 'idioms',
       'article': 'articles',
       'dictionary': 'dictionary',
-      'doha': 'doha'
+      'doha': 'poetry'
     };
     return routes[contentType] || contentType;
   }

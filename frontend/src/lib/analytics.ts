@@ -49,7 +49,7 @@ export async function fetchDemand() {
 }
 
 export async function fetchSummary() {
-  return api("/admin/analytics/v2/summary");
+  return api("/analytics/summary");
 }
 
 export async function fetchAdminSummary() {

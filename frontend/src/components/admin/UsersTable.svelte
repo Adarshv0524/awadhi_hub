@@ -1,7 +1,7 @@
 <script>
   export let apiBase = "";
 
-  import { onMount } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import { getUsers, updateUser } from "../../lib/admin";
 
   let users = [];
@@ -17,6 +17,7 @@
   let editingUser = null;
   let showPermissionsModal = false;
   let scopeEditorText = "{}";
+  let searchTimeout = null;
   const editableRoles = ["guest", "registered", "moderator", "senior_moderator", "admin"];
 
   async function load() {
@@ -25,7 +26,7 @@
     info = "";
     try {
       const offset = (currentPage - 1) * pageSize;
-      users = await getUsers(pageSize, offset, apiBase);
+      users = await getUsers(pageSize, offset, apiBase, query);
     } catch (e) {
       error = e.message || String(e);
     } finally {
@@ -129,6 +130,22 @@
     query = "";
     roleFilter = "all";
     statusFilter = "all";
+    currentPage = 1;
+    load();
+  }
+
+  function handleSearchInput() {
+    if (searchTimeout) clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      currentPage = 1;
+      load();
+    }, 300);
+  }
+
+  function submitSearch() {
+    if (searchTimeout) clearTimeout(searchTimeout);
+    currentPage = 1;
+    load();
   }
 
   function applyFilters(list) {
@@ -161,6 +178,10 @@
   $: filteredUsers = applyFilters(users);
 
   onMount(load);
+
+  onDestroy(() => {
+    if (searchTimeout) clearTimeout(searchTimeout);
+  });
 </script>
 
 <svelte:window on:keydown={onDialogEsc} />
@@ -179,9 +200,19 @@
     </div>
   {:else}
     <div class="mb-4 grid gap-3 md:grid-cols-12 md:items-end">
-      <div class="md:col-span-4">
+      <div class="md:col-span-5">
         <label for="users-search" class="block text-sm mb-1">Search</label>
-        <input id="users-search" class="w-full" type="search" bind:value={query} placeholder="Search by id, username, or email" />
+        <div class="flex gap-2">
+          <input
+            id="users-search"
+            class="w-full"
+            type="search"
+            bind:value={query}
+            on:input={handleSearchInput}
+            placeholder="Search all users by id, username, or email"
+          />
+          <button class="admin-btn admin-btn-primary" on:click={submitSearch} aria-label="Search users">Search</button>
+        </div>
       </div>
       <div class="md:col-span-2">
         <label for="users-role-filter" class="block text-sm mb-1">Role</label>
@@ -251,26 +282,27 @@
       </div>
     </div>
 
-    <table class="w-full border-collapse" aria-label="Admin users table">
-      <caption class="sr-only">Manage users, roles, permissions, and account state</caption>
-      <thead>
-        <tr class="text-left">
-          <th scope="col" class="py-2 px-2">ID</th>
-          <th scope="col" class="px-2">Email / Username</th>
-          <th scope="col" class="px-2">Role</th>
-          <th scope="col" class="px-2">State</th>
-          <th scope="col" class="px-2">Created</th>
-          <th scope="col" class="px-2">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#if filteredUsers.length === 0}
-          <tr class="border-t">
-            <td colspan="6" class="py-4 px-2 text-sm text-slate-400">No users match the current filters.</td>
+    <div class="admin-table-wrap">
+      <table class="w-full border-collapse" aria-label="Admin users table">
+        <caption class="sr-only">Manage users, roles, permissions, and account state</caption>
+        <thead>
+          <tr class="text-left">
+            <th scope="col" class="py-2 px-2">ID</th>
+            <th scope="col" class="px-2">Email / Username</th>
+            <th scope="col" class="px-2">Role</th>
+            <th scope="col" class="px-2">State</th>
+            <th scope="col" class="px-2">Created</th>
+            <th scope="col" class="px-2">Actions</th>
           </tr>
-        {:else}
-        {#each filteredUsers as u}
-          <tr class="border-t">
+        </thead>
+        <tbody>
+          {#if filteredUsers.length === 0}
+            <tr class="border-t">
+              <td colspan="6" class="py-4 px-2 text-sm text-slate-400">No users match the current filters.</td>
+            </tr>
+          {:else}
+          {#each filteredUsers as u}
+            <tr class="border-t">
             <td class="py-2 px-2">{u.id}</td>
             <td class="px-2">
               <div class="font-medium">{u.username ?? "—"}</div>
@@ -330,11 +362,12 @@
                 Manage
               </button>
             </td>
-          </tr>
-        {/each}
-        {/if}
-      </tbody>
-    </table>
+            </tr>
+          {/each}
+          {/if}
+        </tbody>
+      </table>
+    </div>
   {/if}
 {/if}
 
@@ -342,7 +375,7 @@
 {#if showPermissionsModal && editingUser}
   <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
     <button class="absolute inset-0" aria-label="Close dialog" on:click={closePermissions}></button>
-    <div class="relative bg-slate-900 border border-slate-600 rounded-xl p-6 max-w-lg mx-4 shadow-2xl" role="dialog" aria-modal="true" aria-label="Manage user permissions">
+    <div class="relative bg-slate-900 border border-slate-600 rounded-xl p-6 max-w-lg mx-4 shadow-2xl max-h-[85vh] overflow-y-auto" role="dialog" aria-modal="true" aria-label="Manage user permissions">
       <h3 class="text-xl font-bold text-slate-100 mb-4">Manage User: {editingUser.username || editingUser.email}</h3>
       
       <div class="space-y-4">

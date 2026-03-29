@@ -15,7 +15,7 @@
       'idiom': 'idioms',
       'article': 'articles',
       'dictionary': 'dictionary',
-      'doha': 'doha'
+      'doha': 'poetry'
     };
     return routes[contentType] || contentType;
   }
@@ -24,20 +24,21 @@
     loading = true;
     error = "";
     try {
-      const cached = localStorage.getItem("awadhi_user_cache");
-      if (cached) {
-        user = JSON.parse(cached);
-      } else {
-        const token = localStorage.getItem("awadhi_access_token");
-        if (!token) throw new Error("Not authenticated");
-        const r = await fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
-        if (!r.ok) throw new Error("Unable to get user");
+      const token = localStorage.getItem("awadhi_access_token");
+      if (!token) throw new Error("Not authenticated");
+
+      // Prefer fresh profile data so dashboard reflects recent edits.
+      const r = await fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
+      if (r.ok) {
         user = await r.json();
         localStorage.setItem("awadhi_user_cache", JSON.stringify(user));
+      } else {
+        const cached = localStorage.getItem("awadhi_user_cache");
+        if (!cached) throw new Error("Unable to get user");
+        user = JSON.parse(cached);
       }
 
       // load my submissions
-      const token = localStorage.getItem("awadhi_access_token");
       if (token) {
         const s = await fetch(`${API_BASE}/submissions/me`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -85,7 +86,13 @@
   <section class="mb-6 bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-lg">
     <h2 class="text-lg font-bold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">Profile</h2>
     <div class="text-sm text-slate-300 mt-3 space-y-1">
-      <p><strong class="text-cyan-300">{user.username ?? user.email}</strong></p>
+      <p><strong class="text-cyan-300">{user.name || user.username || user.email}</strong></p>
+      {#if user.name && user.username}
+        <p class="text-slate-400">@{user.username}</p>
+      {/if}
+      {#if user.bio}
+        <p class="text-slate-300 mt-2 leading-relaxed">{user.bio}</p>
+      {/if}
       <p class="text-blue-300">{user.email}</p>
       <p class="text-indigo-300">Role: <span class="font-semibold">{user.role}</span></p>
       <p class="text-purple-300">Joined: {formatDate(user.created_at ?? user.joined_at ?? user.created)}</p>

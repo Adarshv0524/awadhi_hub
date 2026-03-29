@@ -4,6 +4,7 @@ export const prerender = false;
 import BaseLayout from "../../../layouts/BaseLayout.astro";
 import { api } from "../../../lib/api";
 import PoetryChapterReader from "../../../components/content/poetry/PoetryChapterReader.svelte";
+import StructuredData from "../../../components/StructuredData.astro";
 import "../../../styles/chapter.css";
 
 /**
@@ -29,6 +30,8 @@ const safeDecode = (s: any) => {
 };
 const displayTitle = (() => (safeDecode(chapter) || "").replace(/-/g, " "));
 const encodedPath = [author, work, chapter].map((p) => encodeURIComponent(String(p))).join("/");
+const baseUrl = (import.meta.env.SITE || "https://awadhi.new").replace(/\/$/, "");
+const chapterUrl = `${baseUrl}/${encodedPath}`;
 
 let chapterItems: any[] = [];
 let total = 0;
@@ -63,9 +66,64 @@ try {
   console.error("[Chapter] Unexpected error:", err);
   pageError = "Unexpected error while loading chapter.";
 }
+
+const contentPreview = chapterItems
+  .slice(0, 3)
+  .map((item: any) => String(item?.main_text || "").replace(/\s+/g, " ").trim())
+  .filter(Boolean)
+  .join(" ");
+const chapterDescription = contentPreview
+  ? `${contentPreview.slice(0, 180)}${contentPreview.length > 180 ? "..." : ""}`
+  : `${displayTitle || "Chapter"} from ${workName} by ${authorName} on Awadhi New.`;
+const chapterKeywords = ["Awadhi chapter", authorName, workName, displayTitle, "Awadhi poetry"].filter(Boolean);
 ---
 
-<BaseLayout title={displayTitle || "Chapter · Awadhi New"}>
+<BaseLayout
+  title={`${streamHierarchy?.chapter?.title || displayTitle || "Chapter"} · ${streamHierarchy?.work?.title || workName} · Awadhi New`}
+  description={chapterDescription}
+  canonicalURL={chapterUrl}
+  type="article"
+  lang="hi"
+  locale="hi_IN"
+  keywords={chapterKeywords}
+>
+  <head>
+    <StructuredData
+      type="BreadcrumbList"
+      data={{
+        items: [
+          { name: "Home", url: baseUrl },
+          { name: streamHierarchy?.author?.name || authorName, url: `${baseUrl}/${encodeURIComponent(author)}` },
+          { name: streamHierarchy?.work?.title || workName, url: `${baseUrl}/${encodeURIComponent(author)}/${encodeURIComponent(work)}` },
+          { name: streamHierarchy?.chapter?.title || displayTitle || "Chapter", url: chapterUrl },
+        ],
+      }}
+    />
+    <StructuredData
+      type="CollectionPage"
+      data={{
+        name: `${streamHierarchy?.chapter?.title || displayTitle || "Chapter"} · ${streamHierarchy?.work?.title || workName}`,
+        description: chapterDescription,
+        url: chapterUrl,
+        inLanguage: "awa",
+      }}
+    />
+    {chapterItems.length > 0 && (
+      <StructuredData
+        type="ItemList"
+        data={{
+          name: `${streamHierarchy?.chapter?.title || displayTitle || "Chapter"} verses`,
+          numberOfItems: total,
+          items: chapterItems.slice(0, 20).map((item: any) => ({
+            position: item.sequence_no,
+            name: String(item.main_text || "").replace(/\s+/g, " ").trim().slice(0, 90),
+            url: `${baseUrl}/poetry/${item.id}`,
+          })),
+        }}
+      />
+    )}
+  </head>
+
   <nav aria-label="Breadcrumb" class="mb-5 overflow-x-auto rounded-lg border border-slate-800/80 bg-slate-900/35 px-3 py-2">
     <ol class="inline-flex min-w-full items-center gap-2 whitespace-nowrap text-sm text-slate-300">
       <li class="max-w-[9rem] truncate md:max-w-[14rem]"><a class="truncate-soft hover:text-cyan-300" href={`/${encodeURIComponent(author)}`}>{streamHierarchy?.author?.name || authorName}</a></li>

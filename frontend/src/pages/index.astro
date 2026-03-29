@@ -2,6 +2,7 @@
 // src/pages/index.astro
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { api } from "../lib/api";
+import StructuredData from "../components/StructuredData.astro";
 
 type FeaturedArticle = {
   id: number;
@@ -21,24 +22,45 @@ try {
 <BaseLayout
   title="Awadhi New · Home"
   description="Awadhi New is a curated archive of Awadhi literature featuring dohas, dictionary entries, idioms, authors, and research articles."
+  keywords={["Awadhi literature", "Awadhi doha", "Ramcharitmanas", "Awadhi dictionary", "Awadhi idioms"]}
 >
+  <head>
+    <StructuredData
+      type="WebSite"
+      data={{
+        name: "Awadhi New",
+        url: "https://awadhi.new",
+        inLanguage: "awa",
+        searchUrl: "/search?q={search_term_string}"
+      }}
+    />
+    <StructuredData
+      type="Organization"
+      data={{
+        name: "Awadhi New",
+        url: "https://awadhi.new",
+        logo: "https://awadhi.new/favicon.svg"
+      }}
+    />
+  </head>
+
   <!-- Hero Section -->
-  <div class="relative -mt-8 -mx-4 mb-12 px-4 py-20 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border-b border-slate-700">
+  <div class="relative -mt-8 -mx-4 mb-10 px-4 py-14 sm:py-16 md:py-20 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border-b border-slate-700">
     <div class="max-w-4xl mx-auto text-center">
-      <h1 class="text-5xl md:text-6xl font-serif font-bold mb-6 bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent">
+      <h1 class="text-4xl sm:text-5xl md:text-6xl font-serif font-bold mb-5 bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent leading-tight">
         Awadhi New
       </h1>
-      <p class="text-xl md:text-2xl text-slate-300 mb-8 leading-relaxed">
+      <p class="text-lg sm:text-xl md:text-2xl text-slate-300 mb-6 leading-relaxed px-1">
         A Scholarly Repository of Awadhi Literature
       </p>
-      <p class="text-slate-400 mb-10 max-w-2xl mx-auto">
+      <p class="text-slate-400 mb-8 sm:mb-10 max-w-2xl mx-auto text-sm sm:text-base px-2">
         Preserving classical Awadhi content with dohas, idioms, dictionary entries, and scholarly articles
       </p>
-      <div class="flex flex-wrap justify-center gap-4">
-        <a href="/search" class="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white font-semibold rounded-lg shadow-lg transition-all transform hover:scale-105">
+      <div class="flex flex-col sm:flex-row flex-wrap justify-center gap-3 sm:gap-4 max-w-md sm:max-w-none mx-auto">
+        <a href="/search" class="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white font-semibold rounded-lg shadow-lg transition-all transform hover:scale-[1.02] text-center">
           Explore Content
         </a>
-        <a href="/submit" class="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold rounded-lg shadow-lg transition-all transform hover:scale-105 border border-slate-600">
+        <a href="/submit" class="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold rounded-lg shadow-lg transition-all transform hover:scale-[1.02] border border-slate-600 text-center">
           Contribute
         </a>
       </div>
@@ -46,40 +68,68 @@ try {
   </div>
 
   <!-- Content Grid -->
-  <div class="grid md:grid-cols-3 gap-6 mb-12">
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-10 sm:mb-12">
     <!-- Quick Access Cards -->
-    <a href="/doha" class="group p-6 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-cyan-500 rounded-lg transition-all transform hover:scale-105">
-      <div class="text-3xl mb-3">📜</div>
-      <h3 class="text-lg font-semibold text-cyan-400 mb-2">Dohas</h3>
-      <p class="text-sm text-slate-400">Traditional Awadhi poetic couplets</p>
+    <a href="/poetry?type=doha" class="group p-5 sm:p-6 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-cyan-500 rounded-lg transition-all transform hover:scale-[1.02]">
+      <div class="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-md border border-cyan-500/40 bg-cyan-500/10 text-cyan-300">
+        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 4h7a3 3 0 0 1 3 3v11H9a3 3 0 0 0-3 3V7a3 3 0 0 1 3-3Z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 8h6M9 12h6M9 16h4"/>
+        </svg>
+      </div>
+      <h3 class="text-lg font-semibold text-cyan-400 mb-2">Doha (Poetry Type)</h3>
+      <p class="text-sm text-slate-400">All doha entries across works and chapters</p>
     </a>
     
-    <a href="/dictionary" class="group p-6 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-blue-500 rounded-lg transition-all transform hover:scale-105">
-      <div class="text-3xl mb-3">📖</div>
+    <a href="/dictionary" class="group p-5 sm:p-6 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-blue-500 rounded-lg transition-all transform hover:scale-[1.02]">
+      <div class="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-md border border-blue-500/40 bg-blue-500/10 text-blue-300">
+        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2V6Z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M8 8h7M8 12h7"/>
+        </svg>
+      </div>
       <h3 class="text-lg font-semibold text-blue-400 mb-2">Dictionary</h3>
       <p class="text-sm text-slate-400">Comprehensive Awadhi vocabulary</p>
     </a>
     
-    <a href="/idioms" class="group p-6 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-indigo-500 rounded-lg transition-all transform hover:scale-105">
-      <div class="text-3xl mb-3">💬</div>
+    <a href="/idioms" class="group p-5 sm:p-6 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-indigo-500 rounded-lg transition-all transform hover:scale-[1.02]">
+      <div class="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-md border border-indigo-500/40 bg-indigo-500/10 text-indigo-300">
+        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M20 14a3 3 0 0 1-3 3H9l-5 3V6a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3Z"/>
+        </svg>
+      </div>
       <h3 class="text-lg font-semibold text-indigo-400 mb-2">Idioms</h3>
       <p class="text-sm text-slate-400">Expressions and phrases</p>
     </a>
     
-    <a href="/articles" class="group p-6 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-purple-500 rounded-lg transition-all transform hover:scale-105">
-      <div class="text-3xl mb-3">📝</div>
+    <a href="/articles" class="group p-5 sm:p-6 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-purple-500 rounded-lg transition-all transform hover:scale-[1.02]">
+      <div class="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-md border border-purple-500/40 bg-purple-500/10 text-purple-300">
+        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M7 4h10a2 2 0 0 1 2 2v14l-4-2-4 2-4-2-4 2V6a2 2 0 0 1 2-2h2"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 8h6M9 12h6"/>
+        </svg>
+      </div>
       <h3 class="text-lg font-semibold text-purple-400 mb-2">Articles</h3>
       <p class="text-sm text-slate-400">Scholarly research and essays</p>
     </a>
     
-    <a href="/authors" class="group p-6 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-pink-500 rounded-lg transition-all transform hover:scale-105">
-      <div class="text-3xl mb-3">👥</div>
+    <a href="/authors" class="group p-5 sm:p-6 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-pink-500 rounded-lg transition-all transform hover:scale-[1.02]">
+      <div class="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-md border border-pink-500/40 bg-pink-500/10 text-pink-300">
+        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16 19a4 4 0 0 0-8 0M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM20 19a4 4 0 0 0-3-3.87M17 8a3 3 0 1 0 0-6"/>
+        </svg>
+      </div>
       <h3 class="text-lg font-semibold text-pink-400 mb-2">Authors</h3>
       <p class="text-sm text-slate-400">Browse by contributors</p>
     </a>
     
-    <a href="/search" class="group p-6 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-emerald-500 rounded-lg transition-all transform hover:scale-105">
-      <div class="text-3xl mb-3">🔍</div>
+    <a href="/search" class="group p-5 sm:p-6 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-emerald-500 rounded-lg transition-all transform hover:scale-[1.02]">
+      <div class="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 text-emerald-300">
+        <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <circle cx="11" cy="11" r="7"/>
+          <path stroke-linecap="round" d="m20 20-3.5-3.5"/>
+        </svg>
+      </div>
       <h3 class="text-lg font-semibold text-emerald-400 mb-2">Search</h3>
       <p class="text-sm text-slate-400">Find content across all types</p>
     </a>
@@ -87,12 +137,16 @@ try {
 
   <!-- Featured Articles -->
   {featuredArticles.length > 0 && (
-    <section class="bg-slate-800/30 border border-slate-700 rounded-lg p-6">
+    <section class="bg-slate-800/30 border border-slate-700 rounded-lg p-5 sm:p-6">
       <h2 class="text-2xl font-serif font-semibold text-slate-100 mb-6 flex items-center gap-2">
-        <span class="text-2xl">⭐</span>
+        <span class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-300">
+          <svg viewBox="0 0 24 24" class="h-4.5 w-4.5" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m12 3 2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.7 6.7 19l1-5.8L3.5 9.2l5.9-.9L12 3Z"/>
+          </svg>
+        </span>
         Featured Articles
       </h2>
-      <div class="grid sm:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {featuredArticles.map((article: FeaturedArticle) => (
           <a 
             href={`/articles/${article.id}`} 

@@ -203,6 +203,39 @@ def test_public_user_profile(client, db):
     assert body["role"] == Role.REGISTERED
 
 
+def test_profile_name_bio_visible_in_me_and_public_profile(client, db):
+    user = _create_user(
+        db,
+        "profile-fields@example.com",
+        role=Role.REGISTERED,
+        permissions=0,
+        username="profilefields",
+    )
+    token = create_access_token(user.id)
+
+    update = client.patch(
+        "/users/me",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"name": "Profile Fields", "bio": "Testing public visibility."},
+    )
+    assert update.status_code == 200
+    update_body = update.json()
+    assert update_body["name"] == "Profile Fields"
+    assert update_body["bio"] == "Testing public visibility."
+
+    me = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me.status_code == 200
+    me_body = me.json()
+    assert me_body["name"] == "Profile Fields"
+    assert me_body["bio"] == "Testing public visibility."
+
+    public = client.get(f"/users/{user.username}")
+    assert public.status_code == 200
+    public_body = public.json()
+    assert public_body["name"] == "Profile Fields"
+    assert public_body["bio"] == "Testing public visibility."
+
+
 def test_forgot_password_returns_generic_success(client):
     r = client.post("/auth/forgot-password", json={"email": "does-not-exist@example.com"})
     assert r.status_code == 200

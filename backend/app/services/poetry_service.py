@@ -61,6 +61,9 @@ def _serialize_current(node: PoetryNode) -> dict:
         "poetry_type": node.poetry_type,
         "sequence_no": node.sequence_no,
         "main_text": node.main_text,
+        "text_devanagari": node.text_devanagari,
+        "text_romanized": node.text_romanized,
+        "meaning": node.meaning,
         "prosody_metadata": node.prosody_metadata,
     }
 
@@ -165,11 +168,23 @@ def get_poetry_node(db: Session, poetry_node_id: int) -> dict:
     if not row:
         raise HTTPException(status_code=404, detail="Poetry node not found")
 
+    chapter_scope = _active_poetry_query(db).filter(PoetryNode.chapter_id == row.chapter_id)
+    previous = (
+        chapter_scope.filter(PoetryNode.sequence_no < row.sequence_no)
+        .order_by(PoetryNode.sequence_no.desc(), PoetryNode.id.desc())
+        .first()
+    )
+    next_item = (
+        chapter_scope.filter(PoetryNode.sequence_no > row.sequence_no)
+        .order_by(PoetryNode.sequence_no.asc(), PoetryNode.id.asc())
+        .first()
+    )
+
     return {
         "hierarchy": _serialize_hierarchy(row),
         "current": _serialize_current(row),
-        "previous": None,
-        "next": None,
+        "previous": _serialize_nav_summary(previous),
+        "next": _serialize_nav_summary(next_item),
     }
 
 

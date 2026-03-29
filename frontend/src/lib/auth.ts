@@ -5,7 +5,7 @@ const ACCESS_KEY = "awadhi_access_token";
 const REFRESH_KEY = "awadhi_refresh_token";
 const USER_CACHE_KEY = "awadhi_user_cache";
 
-export const API_BASE = import.meta.env.PUBLIC_API_BASE || "http://localhost:8000";
+export const API_BASE = import.meta.env.PUBLIC_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : "");
 
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;

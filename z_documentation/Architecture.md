@@ -153,6 +153,11 @@ Primary endpoints:
 4. GET /api/v1/poetry/types
 5. GET /api/v1/poetry/search
 
+Frontend detail routes:
+
+1. GET /poetry/{id} for per-poetry-node detail pages across doha and non-doha poetry forms.
+2. Chapter entries in /{author}/{work}/{chapter} deep-link to /poetry/{id}.
+
 Navigation behavior:
 
 1. Locate current node by exact chapter and sequence.
@@ -184,6 +189,7 @@ Fan-out is conditional on active filter state, not unconditional multi-request s
 1. Build shared query parameters from user input.
 2. Spawn domain-specific requests only for eligible filters.
 3. Resolve all requests with per-section failure isolation.
+4. In all-content mode, poetry section suppresses poetry_type=doha rows to avoid duplicate rendering with the dedicated doha section.
 
 ## 3.2.2 Article discovery flow
 
@@ -273,6 +279,7 @@ Poetry rendering uses a dispatcher component:
 1. Normalize poetry_type.
 2. Select specialized renderer when mapped.
 3. Fall back to GenericPoetryRenderer for unmapped forms.
+4. Forward rendering mode to specialized renderers so chapter pages can render continuous chapter typography while detail pages retain card-style presentation.
 
 This enables immediate rendering for newly approved forms before dedicated visual treatment is shipped.
 
@@ -492,6 +499,15 @@ The reader experience includes cross-module discovery for article, dictionary, i
 3. Dictionary, idiom, and article detail pages consume /content/{type}/{entry_id}/navigation for previous and next controls.
 4. Related content blocks at the bottom of dictionary, idiom, and article pages consume GET /recommendations/{content_type}/{content_id}.
 5. Recommendation rendering is non-blocking and degrades gracefully when the endpoint returns empty or partial data.
+
+## 4.7 Chapter Reading UX Contracts
+
+Chapter reading and deep-link behavior are standardized as follows:
+
+1. Chapter pages render in chapter-flow mode using typographic continuity, not stacked card blocks.
+2. Each poetry node in chapter stream has a direct deep link to /poetry/{id}.
+3. Poetry detail pages expose chapter-local previous and next navigation using backend chapter-scope ordering.
+4. Chapter pages retain explicit separators between adjacent entries to preserve readability for mixed poetry forms.
 
 ## 5) Boundary Contracts
 

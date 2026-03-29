@@ -43,7 +43,7 @@
       'idiom': 'idioms',
       'article': 'articles',
       'dictionary': 'dictionary',
-      'doha': 'doha'
+      'doha': 'poetry'
     };
     return routes[contentType] || contentType;
   }
@@ -229,7 +229,7 @@
     <!-- Welcome Header -->
     <div class="mb-8">
       <h2 class="text-4xl font-serif font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400 bg-clip-text text-transparent mb-2">
-        Welcome back, {user.username || user.email}
+        Welcome back, {user.name || user.username || user.email}
       </h2>
       <div class="flex items-center gap-4 flex-wrap">
         <span class="text-slate-400">Role:</span>
@@ -528,8 +528,8 @@
               Start bookmarking content you want to save for later. Browse our collection to find interesting dohas, words, idioms, and articles.
             </p>
             <div class="flex justify-center gap-3 flex-wrap">
-              <a href="/doha" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition-colors">
-                Browse Doha
+              <a href="/poetry?type=doha" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition-colors">
+                Browse Doha Type
               </a>
               <a href="/dictionary" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition-colors">
                 Browse Dictionary

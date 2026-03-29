@@ -149,18 +149,22 @@
     </div>
   </div>
 
-    <div class="space-y-4" role="list" aria-label="Poetry sequence">
+    <div class="chapter-flow" role="list" aria-label="Poetry sequence">
       {#each loadedItems as node, index}
-      <div
+      <article
         data-poetry-seq={node.sequence_no}
-        class={`rounded-2xl transition ${index === currentIndex ? "ring-2 ring-cyan-400/65 shadow-lg" : "ring-1 ring-transparent"}`}
+        class={`chapter-entry ${index === currentIndex ? "is-current" : ""}`}
         aria-current={index === currentIndex ? "true" : undefined}
         role="listitem"
       >
-        <div class="reader-text">
-          <PoetryDispatcher poetryNode={node} chapterId={chapterId} />
+        <div class="chapter-entry-meta">
+          <span class="chapter-entry-type">{node.poetry_type}</span>
+          <span class="chapter-entry-seq">#{node.sequence_no}</span>
         </div>
-      </div>
+        <a class="chapter-entry-link" href={`/poetry/${node.id}`} aria-label={`Open verse ${node.sequence_no} details`}>
+          <PoetryDispatcher poetryNode={node} chapterId={chapterId} mode="chapter" />
+        </a>
+      </article>
     {/each}
   </div>
 

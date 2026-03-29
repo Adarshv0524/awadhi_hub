@@ -4,8 +4,14 @@ import ProfileEditor from "../../components/user/ProfileEditor.svelte";
 export const prerender = false;
 ---
 <BaseLayout title="Edit profile · Awadhi New" noindex>
-  <div class="min-h-screen bg-slate-900 py-8">
-    <h1 class="text-3xl font-serif font-bold mb-8 bg-gradient-to-r from-purple-400 via-pink-400 to-rose-400 bg-clip-text text-transparent">Edit profile</h1>
-    <ProfileEditor client:load />
+  <div class="min-h-screen bg-slate-900 py-10 px-4">
+    <div class="max-w-2xl mx-auto mb-8">
+      <p class="text-xs uppercase tracking-[0.16em] text-slate-500 mb-2">Account Settings</p>
+      <h1 class="text-3xl md:text-4xl font-serif font-bold bg-gradient-to-r from-cyan-300 via-blue-300 to-indigo-300 bg-clip-text text-transparent">Edit profile</h1>
+      <p class="text-slate-400 mt-2">Update your public identity, email and profile information.</p>
+    </div>
+    <div class="max-w-2xl mx-auto">
+      <ProfileEditor client:load />
+    </div>
   </div>
 </BaseLayout>

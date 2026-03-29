@@ -21,10 +21,8 @@ try {
   try {
     navigation = await api(`/content/article/${id}/navigation`);
   } catch (navErr) {
+    // Articles may not have navigation/chapter links - this is expected
     navigation = null;
-    if (import.meta.env.DEV) {
-      console.warn("[Article Detail] Navigation fetch failed:", navErr);
-    }
   }
 } catch (e) {
   if (e instanceof ApiError && e.status === 404) {

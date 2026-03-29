@@ -14,7 +14,7 @@
 
   function routeForContentType(contentType: string | undefined): string | undefined {
     if (!contentType) return undefined;
-    if (contentType === "doha") return "/doha";
+    if (contentType === "doha") return "/poetry";
     if (contentType === "dictionary") return "/dictionary";
     if (contentType === "idiom") return "/idioms";
     if (contentType === "article") return "/articles";
@@ -41,6 +41,12 @@
     return `${routeBase}/${targetId}`;
   }
 
+  function normalizePreview(text: string | undefined): string | undefined {
+    if (!text) return undefined;
+    const compact = text.replace(/\s+/g, " ").trim();
+    return compact.length > 160 ? `${compact.slice(0, 157)}...` : compact;
+  }
+
   function handleNavigation(target: string): void {
     isLoading = true;
     setTimeout(() => {
@@ -50,6 +56,8 @@
 
   $: previousTarget = resolveTarget(previousId, previousHref, previousContentType);
   $: nextTarget = resolveTarget(nextId, nextHref, nextContentType);
+  $: previousPreview = normalizePreview(previousText);
+  $: nextPreview = normalizePreview(nextText);
   $: previousKindLabel = previousKind || kindForContentType(previousContentType);
   $: nextKindLabel = nextKind || kindForContentType(nextContentType);
 </script>
@@ -60,13 +68,13 @@
       <button
         on:click={() => handleNavigation(previousTarget)}
         disabled={isLoading}
-        class="w-full rounded-lg border border-slate-600 bg-gradient-to-r from-slate-700 to-slate-600 px-4 py-3 text-left text-slate-100 transition-all hover:from-slate-600 hover:to-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
-        title={previousText ? `Previous: ${previousText.substring(0, 80)}...` : `Previous ${previousKindLabel}`}
+        class="min-w-0 w-full rounded-lg border border-slate-600 bg-gradient-to-r from-slate-700 to-slate-600 px-4 py-3 text-left text-slate-100 transition-all hover:from-slate-600 hover:to-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+        title={previousPreview ? `Previous: ${previousPreview}` : `Previous ${previousKindLabel}`}
       >
         <div class="text-[11px] uppercase tracking-wide text-slate-300">Previous {previousKindLabel}</div>
         <div class="mt-1 flex items-center gap-2 text-sm font-medium">
           <span class="text-base">←</span>
-          <span class="truncate">{previousText || "Go to previous item"}</span>
+          <span class="truncate">{previousPreview || "Go to previous item"}</span>
         </div>
       </button>
     {:else}
@@ -83,12 +91,12 @@
       <button
         on:click={() => handleNavigation(nextTarget)}
         disabled={isLoading}
-        class="w-full rounded-lg border border-cyan-500/60 bg-gradient-to-r from-cyan-600 to-cyan-500 px-4 py-3 text-right text-slate-950 transition-all hover:from-cyan-500 hover:to-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
-        title={nextText ? `Next: ${nextText.substring(0, 80)}...` : `Next ${nextKindLabel}`}
+        class="min-w-0 w-full rounded-lg border border-cyan-500/60 bg-gradient-to-r from-cyan-600 to-cyan-500 px-4 py-3 text-right text-slate-950 transition-all hover:from-cyan-500 hover:to-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+        title={nextPreview ? `Next: ${nextPreview}` : `Next ${nextKindLabel}`}
       >
         <div class="text-[11px] uppercase tracking-wide text-slate-900/80">Next {nextKindLabel}</div>
         <div class="mt-1 flex items-center justify-end gap-2 text-sm font-semibold">
-          <span class="truncate">{nextText || "Go to next item"}</span>
+          <span class="truncate">{nextPreview || "Go to next item"}</span>
           <span class="text-base">→</span>
         </div>
       </button>

@@ -23,6 +23,8 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(100), unique=True, nullable=True, index=True)
+    name = Column(String(120), nullable=True)
+    bio = Column(Text, nullable=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=True)
     role = Column(String(50), default="registered", nullable=False)
@@ -30,6 +32,8 @@ class User(Base):
     permission_scopes = Column(JSON, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     is_banned = Column(Boolean, default=False, nullable=False)
+    email_verified = Column(Boolean, default=False, nullable=False)
+    pending_email = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     last_login = Column(DateTime(timezone=True), nullable=True)
@@ -54,6 +58,20 @@ class OAuthAccount(Base):
     __table_args__ = (
         UniqueConstraint("provider", "provider_user_id", name="uq_provider_user"),
     )
+
+
+class EmailVerificationToken(Base):
+    """Email verification tokens with OTP for register and email change flows."""
+    __tablename__ = "email_verification_tokens"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token = Column(String(512), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    email_to_verify = Column(String(255), nullable=False)
+    otp = Column(String(6), nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    verified_at = Column(DateTime(timezone=True), nullable=True)
 # ============================================
 #       Module 3: Classical Hierarchy
 # ============================================

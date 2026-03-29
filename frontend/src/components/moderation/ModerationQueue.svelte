@@ -29,8 +29,6 @@
   let detailRejectOpen = false;
   let explicitHumanApproval = false;
   let triageMap = new Map();
-
-  // contributor id -> { id, username, email }
   let contributorsMap = new Map();
 
   const log = (...args) => import.meta.env.DEV && console.debug("[MOD-QUEUE]", ...args);
@@ -71,36 +69,51 @@
   }
 
   async function enrichContributors(itemsArr) {
-    const ids = [...new Set(itemsArr.map(i => i.contributor_id).filter(Boolean))];
+    const ids = [...new Set((itemsArr || []).map((i) => i?.contributor_id).filter(Boolean))];
     if (ids.length === 0) return;
 
-    // Fallback: fetch users individually (more reliable for moderators)
-    await Promise.all(ids.map(async (id) => {
-      if (contributorsMap.has(id)) return;
-      try {
-        // Try public user endpoint first (should work for everyone)
-        const u = await api(`/users/${id}`);
-        if (u && u.id) {
-          contributorsMap.set(u.id, { id: u.id, username: u.username, email: u.email });
-          return;
+    await Promise.all(
+      ids.map(async (id) => {
+        if (contributorsMap.has(id)) return;
+        try {
+          const u = await api(`/users/id/${id}`);
+          if (u && u.id) {
+            contributorsMap.set(u.id, {
+              id: u.id,
+              name: u.name || null,
+              username: u.username || null,
+            });
+            return;
+          }
+        } catch (e) {
+          log(`failed to load user ${id} from /users/id`, e);
         }
-      } catch (e) {
-        log(`failed to load user ${id} from /users`, e);
-      }
-      
-      // Fallback to admin endpoint (for admins only)
-      try {
-        const arr = await api(`/admin/users?ids=${id}`);
-        if (Array.isArray(arr) && arr[0]) {
-          const u = arr[0];
-          contributorsMap.set(u.id, { id: u.id, username: u.username, email: u.email });
+
+        try {
+          const arr = await api(`/admin/users?ids=${id}`);
+          const u = Array.isArray(arr) ? arr[0] : null;
+          if (u && u.id) {
+            contributorsMap.set(u.id, {
+              id: u.id,
+              name: u.name || null,
+              username: u.username || null,
+              email: u.email || null,
+            });
+            return;
+          }
+        } catch (e2) {
+          log(`failed to load user ${id} from /admin/users`, e2);
         }
-      } catch (e) {
-        log(`failed to load user ${id} from /admin/users`, e);
-        // Store a placeholder so we don't retry
-        contributorsMap.set(id, { id, username: null, email: null });
-      }
-    }));
+
+        contributorsMap.set(id, { id, name: null, username: null, email: null });
+      })
+    );
+  }
+
+  function contributorLabel(it) {
+    const info = contributorsMap.get(it?.contributor_id);
+    if (!info) return `#${it?.contributor_id ?? "-"}`;
+    return info.name || info.username || info.email || `#${it?.contributor_id ?? "-"}`;
   }
 
   async function load() {
@@ -353,191 +366,272 @@
   }
 </script>
 
-<div class="mb-4 flex items-center gap-3">
-  <label class="inline-flex items-center gap-2">
-    <input type="checkbox" bind:checked={assignedOnly} on:change={resetAndReload} />
-    <span>Assigned to me</span>
-  </label>
-  <label class="inline-flex items-center gap-2">
-    <input type="checkbox" bind:checked={unassignedOnly} on:change={resetAndReload} />
-    <span>Unassigned only</span>
-  </label>
-
-  <div class="ml-auto flex gap-2">
-    <button class="px-3 py-1 border rounded" on:click={() => batchAction("approve")}>Batch Approve</button>
-    <button class="px-3 py-1 border rounded" on:click={() => batchAction("reject")}>Batch Reject</button>
+<div class="max-w-7xl mx-auto p-4">
+  <!-- Simple Header -->
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-slate-100">Moderation Queue</h1>
   </div>
-</div>
 
-{#if loading}
-  <p>Loading moderation queue…</p>
-{:else if error}
-  <p class="text-red-600">{error}</p>
-{:else if items.length === 0}
-  <p>No pending submissions.</p>
-{:else}
-  <table class="w-full table-auto border-collapse">
-    <thead>
-      <tr class="text-left">
-        <th class="p-2">
-          <input type="checkbox" on:change={(e) => { if (e.target.checked) items.forEach(i => selected.add(i.id)); else selected = new Set(); }} />
-        </th>
-        <th class="p-2">#</th>
-        <th class="p-2">Priority</th>
-        <th class="p-2">Type</th>
-        <th class="p-2">Snippet</th>
-        <th class="p-2">Assigned To</th>
-        <th class="p-2">Contributor</th>
-        <th class="p-2">Created</th>
-        <th class="p-2">AI Triage</th>
-        <th class="p-2">Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {#each items as it}
-        <tr class="border-t {it.assigned_moderator_id === currentUser?.id ? 'bg-blue-50' : ''}">
-          <td class="p-2"><input type="checkbox" checked={selected.has(it.id)} on:change={() => toggleSelect(it.id)} /></td>
-          <td class="p-2">{it.id}</td>
-          <td class="p-2">
-            <span class="px-2 py-1 text-xs rounded font-medium {
-              (it.priority || 0) >= 3 ? 'bg-red-100 text-red-700' :
-              (it.priority || 0) === 2 ? 'bg-orange-100 text-orange-700' :
-              (it.priority || 0) === 1 ? 'bg-yellow-100 text-yellow-700' :
-              'bg-gray-100 text-gray-700'
-            }">
-              {it.priority !== undefined && it.priority !== null ? it.priority : 0}
-            </span>
-          </td>
-          <td class="p-2">{it.content_type}</td>
-          <td class="p-2">
-            <div class="line-clamp-2">{snippetFor(it)}</div>
-          </td>
-          <td class="p-2">
-            {#if it.assigned_moderator_id}
-              <span class="text-blue-500">Assigned</span>
-            {:else}
-              <span class="text-gray-500">Unassigned</span>
-            {/if}
-          </td>
-          <td class="p-2">
-            {#if contributorsMap.get(it.contributor_id)}
-              <a href={`/admin/users/${it.contributor_id}`} class="underline">{contributorsMap.get(it.contributor_id).username ?? contributorsMap.get(it.contributor_id).email}</a>
-            {:else}
-              {it.contributor_id ?? "—"}
-            {/if}
-          </td>
-          <td class="p-2">{it.created_at ? new Date(it.created_at).toLocaleString() : "—"}</td>
-          <td class="p-2">
-            {#if triageMap.get(it.id)}
-              <div class="text-xs">
-                <div class="font-semibold">{Math.round((triageMap.get(it.id).confidence || 0) * 100)}%</div>
-                <div>{triageMap.get(it.id).recommendation}</div>
-                <div class="text-slate-500 line-clamp-2">{(triageMap.get(it.id).rationale_snippets || []).join("; ")}</div>
-              </div>
-            {:else}
-              <span class="text-slate-400">n/a</span>
-            {/if}
-          </td>
-          <td class="p-2">
-            <div class="flex gap-2 flex-wrap">
-              <button class="px-2 py-1 border rounded text-sm" on:click={() => viewDetail(it.id)}>View</button>
-              <button class="px-2 py-1 bg-green-600 text-white rounded text-sm" on:click={() => singleApprove(it.id)}>Approve</button>
-              <button class="px-2 py-1 bg-red-600 text-white rounded text-sm" on:click={() => singleReject(it.id)}>Reject</button>
-            </div>
-          </td>
-        </tr>
-      {/each}
-    </tbody>
-  </table>
+  <!-- Controls -->
+  <div class="flex flex-wrap gap-2 mb-4">
+    <label class="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded cursor-pointer">
+      <input type="checkbox" bind:checked={assignedOnly} on:change={resetAndReload} />
+      <span class="text-sm text-slate-200">My Queue</span>
+    </label>
+    <label class="flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded cursor-pointer">
+      <input type="checkbox" bind:checked={unassignedOnly} on:change={resetAndReload} />
+      <span class="text-sm text-slate-200">Unassigned</span>
+    </label>
+    <button 
+      class="ml-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded disabled:opacity-50"
+      on:click={() => batchAction("approve")}
+      disabled={selected.size === 0}
+    >
+      Approve ({selected.size})
+    </button>
+    <button 
+      class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium rounded disabled:opacity-50"
+      on:click={() => batchAction("reject")}
+      disabled={selected.size === 0}
+    >
+      Reject ({selected.size})
+    </button>
+  </div>
 
-  <div class="mt-4 flex items-center justify-between gap-2">
-    <p class="text-sm text-slate-500">Page {page} · Showing up to {limit} items</p>
-    <div class="flex items-center gap-2">
-      <button class="px-3 py-1 border rounded disabled:opacity-40" on:click={goPrevPage} disabled={offset === 0}>Previous</button>
-      <button class="px-3 py-1 border rounded disabled:opacity-40" on:click={goNextPage} disabled={items.length < limit}>Next</button>
+  <!-- Content -->
+  {#if loading}
+    <div class="text-center py-8 text-slate-400">Loading...</div>
+  {:else if error}
+    <div class="p-4 bg-rose-900 text-rose-100 rounded">{error}</div>
+  {:else if items.length === 0}
+    <div class="p-8 text-center text-slate-400 bg-slate-800 rounded">No pending items</div>
+  {:else}
+    <div class="overflow-x-auto border border-slate-700 rounded">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-700 border-b border-slate-600 text-slate-100 font-semibold">
+          <tr>
+            <th class="px-4 py-2 text-left w-8"><input type="checkbox" on:change={(e) => { if (e.target.checked) items.forEach(i => selected.add(i.id)); else selected = new Set(); }} /></th>
+            <th class="px-4 py-2 text-left">ID</th>
+            <th class="px-4 py-2 text-left">Priority</th>
+            <th class="px-4 py-2 text-left">Type</th>
+            <th class="px-4 py-2 text-left">Preview</th>
+            <th class="px-4 py-2 text-left">Status</th>
+            <th class="px-4 py-2 text-left">By</th>
+            <th class="px-4 py-2 text-left">Created</th>
+            <th class="px-4 py-2 text-center">AI</th>
+            <th class="px-4 py-2 text-center">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-700">
+          {#each items as it (it.id)}
+            <tr class="bg-slate-800 hover:bg-slate-750 border-b border-slate-700">
+              <td class="px-4 py-2"><input type="checkbox" checked={selected.has(it.id)} on:change={() => toggleSelect(it.id)} /></td>
+              <td class="px-4 py-2 font-mono text-slate-300">#{it.id}</td>
+              <td class="px-4 py-2">
+                <span class="px-2 py-1 text-xs rounded {
+                  (it.priority || 0) >= 3 ? 'bg-red-900 text-red-200' :
+                  (it.priority || 0) === 2 ? 'bg-orange-900 text-orange-200' :
+                  (it.priority || 0) === 1 ? 'bg-yellow-900 text-yellow-200' :
+                  'bg-slate-700 text-slate-300'
+                }">P{it.priority || 0}</span>
+              </td>
+              <td class="px-4 py-2"><span class="px-2 py-1 text-xs rounded bg-blue-900 text-blue-200">{it.content_type}</span></td>
+              <td class="px-4 py-2 max-w-xs truncate text-slate-300">{snippetFor(it)}</td>
+              <td class="px-4 py-2">
+                {#if it.assigned_moderator_id}
+                  <span class="px-2 py-1 text-xs rounded bg-emerald-900 text-emerald-200">Assigned</span>
+                {:else}
+                  <span class="px-2 py-1 text-xs rounded bg-slate-700 text-slate-300">Unassigned</span>
+                {/if}
+              </td>
+              <td class="px-4 py-2 text-slate-400 text-xs">{contributorLabel(it)}</td>
+              <td class="px-4 py-2 text-slate-400 text-xs">{it.created_at ? new Date(it.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}</td>
+              <td class="px-4 py-2 text-center text-xs">
+                {#if triageMap.get(it.id)}
+                  <div class="text-slate-300">{Math.round((triageMap.get(it.id).confidence || 0) * 100)}%</div>
+                  <div class="text-slate-400">{triageMap.get(it.id).recommendation}</div>
+                {:else}
+                  <span class="text-slate-500">—</span>
+                {/if}
+              </td>
+              <td class="px-4 py-2 text-center">
+                <div class="flex gap-1 justify-center">
+                  <button 
+                    class="px-2 py-1 text-xs bg-blue-700 hover:bg-blue-600 text-white rounded"
+                    on:click={() => viewDetail(it.id)}
+                  >
+                    View
+                  </button>
+                  <button 
+                    class="px-2 py-1 text-xs bg-emerald-700 hover:bg-emerald-600 text-white rounded"
+                    on:click={() => singleApprove(it.id)}
+                  >
+                    OK
+                  </button>
+                  <button 
+                    class="px-2 py-1 text-xs bg-rose-700 hover:bg-rose-600 text-white rounded"
+                    on:click={() => singleReject(it.id)}
+                  >
+                    ✕
+                  </button>
+                </div>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
     </div>
-  </div>
-{/if}
+
+    <!-- Pagination -->
+    <div class="mt-4 flex items-center justify-between text-sm text-slate-300">
+      <span>Page {page} ({items.length} items)</span>
+      <div class="flex gap-2">
+        <button 
+          class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded disabled:opacity-50"
+          on:click={goPrevPage}
+          disabled={offset === 0}
+        >
+          ← Prev
+        </button>
+        <button 
+          class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded disabled:opacity-50"
+          on:click={goNextPage}
+          disabled={items.length < limit}
+        >
+          Next →
+        </button>
+      </div>
+    </div>
+  {/if}
+</div>
 
 {#if detailOpen}
   <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
     role="dialog"
     aria-modal="true"
     tabindex="-1"
     on:click|self={closeDetailPanel}
     on:keydown={(e) => e.key === "Escape" && closeDetailPanel()}
   >
-    <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full mx-4 p-5 max-h-[90vh] overflow-auto">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-semibold">Moderation Detail</h2>
-        <button class="px-2 py-1 border rounded" on:click={closeDetailPanel}>Close</button>
+    <div class="bg-slate-900 rounded-lg w-full max-w-3xl max-h-[90vh] overflow-auto border border-slate-700">
+      <!-- Header -->
+      <div class="sticky top-0 bg-slate-800 border-b border-slate-700 px-6 py-4 flex items-center justify-between">
+        <h2 class="text-lg font-bold text-slate-100">Submission #{detailSubmission?.id}</h2>
+        <button 
+          class="text-slate-400 hover:text-slate-200"
+          on:click={closeDetailPanel}
+        >
+          ✕
+        </button>
       </div>
 
-      {#if detailLoading}
-        <p>Loading full submission context…</p>
-      {:else if detailError}
-        <p class="text-red-600">{detailError}</p>
-      {:else if detailSubmission}
-        <div class="space-y-4">
-          <div class="grid grid-cols-2 gap-3 text-sm">
-            <p><strong>ID:</strong> {detailSubmission.id}</p>
-            <p><strong>Type:</strong> {detailSubmission.content_type}</p>
-            <p><strong>Status:</strong> {detailSubmission.status}</p>
-            <p><strong>Version:</strong> {detailSubmission.version}</p>
-            <p><strong>Contributor:</strong> {detailSubmission.contributor_id}</p>
-            <p><strong>Priority:</strong> {detailSubmission.priority}</p>
-            <p><strong>Author Slug:</strong> {detailSubmission.author_slug || "-"}</p>
-            <p><strong>Work Slug:</strong> {detailSubmission.work_slug || "-"}</p>
-            <p><strong>Chapter Slug:</strong> {detailSubmission.chapter_slug || "-"}</p>
-            <p><strong>Number in Chapter:</strong> {detailSubmission.number_in_chapter ?? "-"}</p>
+      <!-- Content -->
+      <div class="p-6 space-y-4">
+        {#if detailLoading}
+          <p class="text-slate-400">Loading...</p>
+        {:else if detailError}
+          <div class="p-3 bg-rose-900 text-rose-100 rounded text-sm">{detailError}</div>
+        {:else if detailSubmission}
+          <!-- Metadata -->
+          <div class="grid grid-cols-2 gap-4 p-4 bg-slate-800 rounded text-sm">
+            <div>
+              <p class="text-xs text-slate-400 uppercase font-semibold">Type</p>
+              <p class="text-slate-200">{detailSubmission.content_type}</p>
+            </div>
+            <div>
+              <p class="text-xs text-slate-400 uppercase font-semibold">Priority</p>
+              <p class="text-slate-200">P{detailSubmission.priority || 0}</p>
+            </div>
+            <div>
+              <p class="text-xs text-slate-400 uppercase font-semibold">Status</p>
+              <p class="text-slate-200">{detailSubmission.status}</p>
+            </div>
+            <div>
+              <p class="text-xs text-slate-400 uppercase font-semibold">By</p>
+              <p class="text-slate-200">#{detailSubmission.contributor_id}</p>
+            </div>
           </div>
 
-          <div>
-            <p class="text-sm font-semibold mb-1">Main Text</p>
-            <pre class="bg-stone-50 border p-2 rounded text-sm whitespace-pre-wrap">{detailSubmission.main_text || "-"}</pre>
-          </div>
-
-          <div>
-            <p class="text-sm font-semibold mb-1">Meaning</p>
-            <pre class="bg-stone-50 border p-2 rounded text-sm whitespace-pre-wrap">{detailSubmission.meaning || "-"}</pre>
-          </div>
-
-          <div>
-            <label for="moderation-detail-note" class="block text-sm font-semibold mb-1">Moderator Note</label>
-            <textarea
-              id="moderation-detail-note"
-              rows="3"
-              class="w-full border rounded p-2"
-              bind:value={detailNote}
-              placeholder="Add approval or rejection note"
-            ></textarea>
-          </div>
-
-          {#if detailSubmission && triageMap.get(detailSubmission.id)}
-            <div class="rounded border bg-slate-50 p-3 text-sm">
-              <p class="font-semibold">AI Recommendation: {triageMap.get(detailSubmission.id).recommendation}</p>
-              <p>Confidence: {Math.round((triageMap.get(detailSubmission.id).confidence || 0) * 100)}%</p>
-              <p class="text-slate-600">{(triageMap.get(detailSubmission.id).rationale_snippets || []).join("; ")}</p>
+          <!-- Content -->
+          {#if detailSubmission.main_text}
+            <div>
+              <p class="text-xs font-semibold text-slate-400 uppercase mb-2">Main Text</p>
+              <pre class="p-3 bg-slate-800 rounded text-sm text-slate-200 whitespace-pre-wrap max-h-32 overflow-y-auto">{detailSubmission.main_text}</pre>
             </div>
           {/if}
 
-          <label class="inline-flex items-center gap-2 text-sm">
-            <input type="checkbox" bind:checked={explicitHumanApproval} />
-            <span>I confirm human approval for this irreversible moderation action.</span>
+          {#if detailSubmission.meaning}
+            <div>
+              <p class="text-xs font-semibold text-slate-400 uppercase mb-2">Meaning</p>
+              <pre class="p-3 bg-slate-800 rounded text-sm text-slate-200 whitespace-pre-wrap max-h-32 overflow-y-auto">{detailSubmission.meaning}</pre>
+            </div>
+          {/if}
+
+          <!-- AI Recommendation -->
+          {#if triageMap.get(detailSubmission.id)}
+            <div class="p-3 bg-blue-900 rounded text-sm border border-blue-700">
+              <p class="font-semibold text-blue-200">{triageMap.get(detailSubmission.id).recommendation}</p>
+              <p class="text-blue-300 text-xs mt-1">{Math.round((triageMap.get(detailSubmission.id).confidence || 0) * 100)}% confident</p>
+            </div>
+          {/if}
+
+          <!-- Note -->
+          <div>
+            <label for="detail-note" class="text-xs font-semibold text-slate-400 uppercase mb-2 block">Moderator Note</label>
+            <textarea
+              id="detail-note"
+              rows="3"
+              class="w-full p-3 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm"
+              bind:value={detailNote}
+              placeholder="Add your reason..."
+            ></textarea>
+          </div>
+
+          <!-- Confirmation -->
+          <label class="flex items-center gap-2 p-3 bg-slate-800 rounded text-sm cursor-pointer">
+            <input 
+              type="checkbox" 
+              bind:checked={explicitHumanApproval}
+              class="w-4 h-4"
+            />
+            <span class="text-slate-200">I confirm this irreversible action</span>
           </label>
 
-          <div class="flex gap-2">
-            <button class="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700" on:click={approveFromDetail}>Approve</button>
+          <!-- Actions -->
+          <div class="flex gap-2 pt-4 border-t border-slate-700">
+            <button 
+              class="flex-1 px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white font-medium rounded text-sm disabled:opacity-50"
+              on:click={approveFromDetail}
+              disabled={!explicitHumanApproval}
+            >
+              Approve
+            </button>
             {#if !detailRejectOpen}
-              <button class="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700" on:click={() => detailRejectOpen = true}>Reject</button>
+              <button 
+                class="flex-1 px-4 py-2 bg-rose-700 hover:bg-rose-600 text-white font-medium rounded text-sm"
+                on:click={() => detailRejectOpen = true}
+              >
+                Reject
+              </button>
             {:else}
-              <button class="px-3 py-1 bg-red-700 text-white rounded hover:bg-red-800" on:click={rejectFromDetail}>Confirm Reject</button>
-              <button class="px-3 py-1 border rounded" on:click={() => detailRejectOpen = false}>Cancel</button>
+              <button 
+                class="flex-1 px-4 py-2 bg-rose-800 hover:bg-rose-700 text-white font-medium rounded text-sm disabled:opacity-50"
+                on:click={rejectFromDetail}
+                disabled={!explicitHumanApproval || !detailNote.trim()}
+              >
+                Confirm
+              </button>
+              <button 
+                class="px-4 py-2 border border-slate-600 text-slate-300 hover:bg-slate-700 font-medium rounded text-sm"
+                on:click={() => detailRejectOpen = false}
+              >
+                Cancel
+              </button>
             {/if}
           </div>
-        </div>
-      {/if}
+        {/if}
+      </div>
     </div>
   </div>
 {/if}

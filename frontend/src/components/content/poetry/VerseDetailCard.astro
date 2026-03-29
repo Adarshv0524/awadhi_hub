@@ -1,0 +1,33 @@
+---
+import PoetryDispatcher from "./PoetryDispatcher.svelte";
+import CopyButton from "../CopyButton.svelte";
+
+const {
+  node,
+  chapterId = null,
+  badgeLabel,
+  badgeClass,
+  sequenceLabel,
+  showCopy = true,
+} = Astro.props;
+
+const resolvedBadgeLabel = String(badgeLabel || node?.poetry_type || "Poetry");
+const resolvedBadgeClass =
+  String(badgeClass || "inline-flex items-center rounded-full border border-cyan-400/40 bg-cyan-400/10 px-3 py-1 text-xs uppercase tracking-wide text-cyan-200");
+const resolvedSequence = Number.isFinite(Number(sequenceLabel)) ? Number(sequenceLabel) : (node?.sequence_no ?? node?.id ?? "-");
+---
+
+<section class="glass-panel p-5 md:p-7">
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <span class={resolvedBadgeClass}>{resolvedBadgeLabel}</span>
+    <span class="text-xs text-slate-400">Sequence {resolvedSequence}</span>
+  </div>
+
+  <PoetryDispatcher client:load poetryNode={node} mode="chapter" chapterId={chapterId} />
+
+  {showCopy && (
+    <div class="mt-4 flex justify-center">
+      <CopyButton text={node?.main_text || ""} label="Text" color="cyan" client:load />
+    </div>
+  )}
+</section>

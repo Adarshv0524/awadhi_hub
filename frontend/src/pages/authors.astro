@@ -1,6 +1,7 @@
 ---
 // src/pages/authors.astro
 import BaseLayout from "../layouts/BaseLayout.astro";
+import AuthorWorkLiveSearch from "../components/authors/AuthorWorkLiveSearch.svelte";
 import { api, ApiError } from "../lib/api";
 
 type Author = {
@@ -15,7 +16,7 @@ let authors: Author[] = [];
 let error: string | null = null;
 
 try {
-  authors = await api<Author[]>("/authors");
+  authors = await api<Author[]>("/authors?limit=100");
 } catch (e) {
   error = "Unable to load authors at the moment.";
   if (e instanceof ApiError && e.status >= 500 && import.meta.env.DEV) {
@@ -45,25 +46,5 @@ try {
     </div>
   )}
 
-  {!error && (
-    <section class="grid gap-4 sm:grid-cols-2">
-      {authors.map((author) => (
-        <a
-          href={`/${author.slug}`}
-          class="group rounded-xl border border-slate-700 bg-slate-900/45 p-5 transition-all hover:-translate-y-0.5 hover:border-cyan-400/50 hover:bg-slate-800/60"
-        >
-          <h2 class="text-lg font-semibold text-slate-100 group-hover:text-cyan-300 transition-colors">
-            {author.name}
-          </h2>
-          <p class="text-xs uppercase tracking-[0.18em] text-slate-400 mt-1">
-            {author.language ?? "Awadhi"} poet
-          </p>
-          <p class="text-sm text-slate-300 mt-3 line-clamp-3">
-            {author.short_bio || "Open profile to view works, chapters, and curated texts."}
-          </p>
-          <p class="text-sm text-cyan-300 mt-4">View profile →</p>
-        </a>
-      ))}
-    </section>
-  )}
+  {!error && <AuthorWorkLiveSearch client:load initialAuthors={authors} />}
 </BaseLayout>

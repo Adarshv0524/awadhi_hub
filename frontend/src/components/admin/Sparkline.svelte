@@ -4,6 +4,7 @@
   export let height = 50;
   export let color = "currentColor";
   export let fillOpacity = 0.1;
+  export let responsive = true;
 
   const max = Math.max(...values, 1);
   const min = Math.min(...values, 0);
@@ -30,8 +31,15 @@
     : "0";
 </script>
 
-<div class="inline-block group relative">
-  <svg {width} {height} class="transition-opacity hover:opacity-80">
+<div class="group relative w-full max-w-full">
+  <svg
+    {width}
+    {height}
+    viewBox={`0 0 ${width} ${height}`}
+    preserveAspectRatio="none"
+    class="transition-opacity hover:opacity-80 block"
+    style={responsive ? "width:100%;height:auto;" : ""}
+  >
     <!-- Area fill -->
     {#if areaPath}
       <path

@@ -102,7 +102,7 @@
         {sequenceUnitLabel} {idx + 1} of {total || items.length}
       </div>
       {#if itemId}
-        <a href={`/doha/${encodeURIComponent(itemId)}`} class="text-slate-100 hover:text-cyan-300">
+        <a href={`/poetry/${encodeURIComponent(itemId)}`} class="text-slate-100 hover:text-cyan-300">
           {String(itemLabel).slice(0, 180)}
         </a>
       {:else}

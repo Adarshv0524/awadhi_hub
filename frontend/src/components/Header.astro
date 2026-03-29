@@ -65,7 +65,7 @@ const navLinks = [
         ))}
       </nav>
       <div class="pt-2 border-t border-slate-700">
-        <AuthStatus client:load />
+        <AuthStatus mobile={true} client:load />
       </div>
     </div>
   </div>
@@ -76,10 +76,35 @@ const navLinks = [
   const mobileMenu = document.getElementById("mobile-menu");
 
   if (menuButton && mobileMenu) {
+    const setMenuState = (open: boolean) => {
+      menuButton.setAttribute("aria-expanded", String(open));
+      mobileMenu.classList.toggle("hidden", !open);
+    };
+
     menuButton.addEventListener("click", () => {
       const expanded = menuButton.getAttribute("aria-expanded") === "true";
-      menuButton.setAttribute("aria-expanded", String(!expanded));
-      mobileMenu.classList.toggle("hidden", expanded);
+      setMenuState(!expanded);
+    });
+
+    mobileMenu.addEventListener("click", (event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest("a")) {
+        setMenuState(false);
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        setMenuState(false);
+      }
+    });
+
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (!target.closest("#mobile-menu") && !target.closest("#mobile-menu-toggle")) {
+        setMenuState(false);
+      }
     });
   }
 </script>

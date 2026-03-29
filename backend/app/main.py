@@ -288,39 +288,22 @@ app.add_middleware(
     # Allow any localhost/127.0.0.1 dev port to prevent CORS during local port changes.
     allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+        "X-Request-ID",
+        "X-Session-ID",
+        "If-Match",
+        "X-Before-State",
+    ],
 )
 # ------------------------------------
 
-# API routers
-app.include_router(auth_router.router)
-app.include_router(admin_users_router.router)
-app.include_router(users_router.router)
-app.include_router(hierarchy_public_router.router)
-app.include_router(hierarchy_admin_router.router)
-app.include_router(submissions_router.router)
-app.include_router(moderation_router.router) 
-app.include_router(content_router.router) 
-app.include_router(search_router.router)
-app.include_router(analytics_router.router)
-app.include_router(analytics_router.admin_router)
-app.include_router(analytics_router.public_router)
-app.include_router(admin_settings_router.router)
-app.include_router(admin_audit_router.router)
-# NEW: Register dictionary, idiom, article routes
-app.include_router(dictionary_router.router)
-app.include_router(idiom_router.router)
-app.include_router(article_router.router)
-app.include_router(rec_router.router)
-app.include_router(interactions_router.router)
-app.include_router(poetry_router.router)
-app.include_router(telemetry_router.router)
-app.include_router(ai_ops_router.router)
-app.include_router(ai_ops_router.governance_router)
-
-# Backward-compatible API namespace aliases for clients expecting `/api/v1/*`.
-# Keep original routes mounted so existing consumers continue to work unchanged.
+# Canonical API routers
 app.include_router(auth_router.router, prefix="/api/v1")
 app.include_router(admin_users_router.router, prefix="/api/v1")
 app.include_router(users_router.router, prefix="/api/v1")
@@ -340,6 +323,43 @@ app.include_router(idiom_router.router, prefix="/api/v1")
 app.include_router(article_router.router, prefix="/api/v1")
 app.include_router(rec_router.router, prefix="/api/v1")
 app.include_router(interactions_router.router, prefix="/api/v1")
+app.include_router(poetry_router.router, prefix="/api/v1")
+app.include_router(telemetry_router.router, prefix="/api/v1")
+app.include_router(ai_ops_router.router, prefix="/api/v1")
+app.include_router(ai_ops_router.governance_router, prefix="/api/v1")
+
+# Backward-compatible API namespace aliases for clients expecting `/api/v1/*`.
+# Legacy unprefixed routes can be enabled explicitly for older clients.
+legacy_default = "false" if settings.APP_ENV.lower() == "production" else "true"
+enable_legacy_routes = os.getenv("ENABLE_LEGACY_UNPREFIXED_ROUTES", legacy_default).strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
+if enable_legacy_routes:
+    app.include_router(auth_router.router)
+    app.include_router(admin_users_router.router)
+    app.include_router(users_router.router)
+    app.include_router(hierarchy_public_router.router)
+    app.include_router(hierarchy_admin_router.router)
+    app.include_router(submissions_router.router)
+    app.include_router(moderation_router.router)
+    app.include_router(content_router.router)
+    app.include_router(search_router.router)
+    app.include_router(analytics_router.router)
+    app.include_router(analytics_router.admin_router)
+    app.include_router(analytics_router.public_router)
+    app.include_router(admin_settings_router.router)
+    app.include_router(admin_audit_router.router)
+    app.include_router(dictionary_router.router)
+    app.include_router(idiom_router.router)
+    app.include_router(article_router.router)
+    app.include_router(rec_router.router)
+    app.include_router(interactions_router.router)
+    app.include_router(poetry_router.router)
+    app.include_router(telemetry_router.router)
+    app.include_router(ai_ops_router.router)
+    app.include_router(ai_ops_router.governance_router)
 
 
 @app.get("/health")

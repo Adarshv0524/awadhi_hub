@@ -45,6 +45,8 @@ if (type === "Article") {
     description: data.meaning || data.description,
     inLanguage: "awa",
     datePublished: data.datePublished,
+    dateModified: data.dateModified || data.datePublished,
+    url: data.url,
     ...(data.author && {
       author: {
         "@type": "Person",
@@ -56,6 +58,9 @@ if (type === "Article") {
         "@type": "Book",
         name: data.work
       }
+    }),
+    ...(data.position && {
+      position: data.position
     })
   };
 } else if (type === "DefinedTerm") {
@@ -79,6 +84,70 @@ if (type === "Article") {
       item: item.url
     }))
   };
+} else if (type === "WebSite") {
+  jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: data.name || "Awadhi New",
+    url: data.url || baseUrl,
+    inLanguage: data.inLanguage || "awa",
+    potentialAction: data.searchUrl
+      ? {
+          "@type": "SearchAction",
+          target: `${baseUrl}${data.searchUrl}`,
+          "query-input": "required name=search_term_string"
+        }
+      : undefined
+  };
+} else if (type === "Organization") {
+  jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: data.name || "Awadhi New",
+    url: data.url || baseUrl,
+    logo: data.logo || `${baseUrl}/favicon.svg`,
+    sameAs: data.sameAs || undefined
+  };
+} else if (type === "CollectionPage") {
+  jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: data.name,
+    description: data.description,
+    url: data.url,
+    inLanguage: data.inLanguage || "awa",
+    isPartOf: data.isPartOf || undefined
+  };
+} else if (type === "ItemPage") {
+  jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "ItemPage",
+    name: data.name,
+    description: data.description,
+    url: data.url,
+    isPartOf: data.isPartOf,
+    mainEntity: data.mainEntity,
+    inLanguage: data.inLanguage || "awa"
+  };
+} else if (type === "ItemList") {
+  jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: data.name,
+    itemListOrder: "https://schema.org/ItemListOrderAscending",
+    numberOfItems: data.numberOfItems,
+    itemListElement: Array.isArray(data.items)
+      ? data.items.map((item: any, index: number) => ({
+          "@type": "ListItem",
+          position: item.position || index + 1,
+          url: item.url,
+          name: item.name
+        }))
+      : []
+  };
+} else if (type === "raw") {
+  // Pass through complete JSON-LD payloads when composing custom schemas.
+  jsonLd = data;
 }
 ---
 

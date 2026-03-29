@@ -2,10 +2,16 @@ export type UserRole = "registered" | "moderator" | "admin";
 
 export interface AuthUser {
   id: number;
+  name: string | null;
+  bio: string | null;
   email: string;
   username: string | null;
   role: UserRole;
+  created_at?: string;
+  email_verified?: boolean;
+  pending_email?: string | null;
   permissions: number;
+  permission_scopes?: unknown;
 }
 
 export const submissionSchemas = {

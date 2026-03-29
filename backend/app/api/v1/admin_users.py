@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, EmailStr
 from typing import Optional, List, Any, Dict
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, cast, String
 from datetime import datetime
 
 from app.db.session import get_db
@@ -65,14 +66,21 @@ def list_users(
     db: Session = Depends(get_db),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
+    q: str = Query("", description="Search by user id, username, or email"),
 ):
-    users = (
-        db.query(User)
-        .order_by(User.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
+    query = db.query(User)
+    term = (q or "").strip()
+    if term:
+        like_term = f"%{term.lower()}%"
+        query = query.filter(
+            or_(
+                cast(User.id, String).like(f"%{term}%"),
+                User.email.ilike(like_term),
+                User.username.ilike(like_term),
+            )
+        )
+
+    users = query.order_by(User.created_at.desc()).offset(offset).limit(limit).all()
     return users
 
 

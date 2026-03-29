@@ -38,6 +38,22 @@ export const prerender = false;
         <a href="/login" class="text-blue-500 hover:underline">Sign in</a>
       </p>
     </form>
+
+    <form id="verifyForm" class="space-y-4 hidden mt-6" method="POST" action="javascript:void(0)" novalidate>
+      <p class="text-sm text-gray-300">We sent a 6-digit OTP to <span id="verifyEmail" class="font-semibold"></span>.</p>
+      <div>
+        <label class="block text-sm mb-1">Email OTP</label>
+        <input id="otpInput" name="otp" type="text" inputmode="numeric" maxlength="6" required class="w-full border px-3 py-2 rounded bg-gray-800 text-white" placeholder="Enter 6-digit code" />
+      </div>
+      <button id="verifyBtn" type="submit" class="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+        Verify Email
+      </button>
+      <button id="resendBtn" type="button" class="w-full bg-gray-700 text-white py-2 rounded hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+        Resend OTP
+      </button>
+      <p id="verifyError" class="text-red-600 text-sm hidden"></p>
+      <p id="verifySuccess" class="text-green-600 text-sm hidden"></p>
+    </form>
   </div>
 
   <script>
@@ -48,8 +64,18 @@ export const prerender = false;
       const submitBtn = document.getElementById("submitBtn") as HTMLButtonElement | null;
       const btnText = document.getElementById("btnText") as HTMLSpanElement | null;
       const btnLoading = document.getElementById("btnLoading") as HTMLSpanElement | null;
+      const verifyForm = document.getElementById("verifyForm") as HTMLFormElement | null;
+      const verifyEmailEl = document.getElementById("verifyEmail") as HTMLSpanElement | null;
+      const otpInput = document.getElementById("otpInput") as HTMLInputElement | null;
+      const verifyBtn = document.getElementById("verifyBtn") as HTMLButtonElement | null;
+      const resendBtn = document.getElementById("resendBtn") as HTMLButtonElement | null;
+      const verifyError = document.getElementById("verifyError") as HTMLParagraphElement | null;
+      const verifySuccess = document.getElementById("verifySuccess") as HTMLParagraphElement | null;
 
-      if (!form || !errorEl || !successEl || !submitBtn || !btnText || !btnLoading) {
+      let registeredUserId: number | null = null;
+      let registeredEmail = "";
+
+      if (!form || !errorEl || !successEl || !submitBtn || !btnText || !btnLoading || !verifyForm || !verifyEmailEl || !otpInput || !verifyBtn || !resendBtn || !verifyError || !verifySuccess) {
         console.error('[register] Form elements not found');
         return;
       }
@@ -100,14 +126,36 @@ export const prerender = false;
             throw new Error(json.detail || json.message || "Registration failed");
           }
 
-          // Show success message
-          successEl.textContent = `Account created successfully! Welcome, ${json.username || 'user'}. Redirecting to login...`;
+          if (json.access_token) {
+            localStorage.setItem("awadhi_access_token", json.access_token);
+          }
+          if (json.refresh_token) {
+            localStorage.setItem("awadhi_refresh_token", json.refresh_token);
+          }
+
+          if (json.access_token) {
+            try {
+              const meRes = await fetch(API_BASE + "/auth/me", {
+                headers: { Authorization: `Bearer ${json.access_token}` },
+              });
+              if (meRes.ok) {
+                const me = await meRes.json();
+                localStorage.setItem("awadhi_user_cache", JSON.stringify(me));
+              }
+            } catch (_err) {
+              // non-blocking
+            }
+          }
+
+          registeredUserId = Number(json.id);
+          registeredEmail = String(json.email || data.email || "");
+          verifyEmailEl.textContent = registeredEmail;
+
+          successEl.textContent = `Account created successfully! Welcome, ${json.username || 'user'}.`;
           successEl.classList.remove("hidden");
-          
-          // Redirect after brief delay
-          setTimeout(() => {
-            window.location.href = "/login";
-          }, 1500);
+
+          form.classList.add("hidden");
+          verifyForm.classList.remove("hidden");
         } catch (err: any) {
           console.error('[register] Error:', err);
           errorEl.textContent = err?.message || "Registration failed";
@@ -120,6 +168,81 @@ export const prerender = false;
         }
         
         return false;
+      });
+
+      verifyForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        verifyError.classList.add("hidden");
+        verifySuccess.classList.add("hidden");
+
+        if (!registeredUserId || !registeredEmail) {
+          verifyError.textContent = "Missing registration context. Please register again.";
+          verifyError.classList.remove("hidden");
+          return;
+        }
+
+        const otp = otpInput.value.trim();
+        if (!otp || otp.length !== 6) {
+          verifyError.textContent = "Please enter a valid 6-digit OTP.";
+          verifyError.classList.remove("hidden");
+          return;
+        }
+
+        verifyBtn.disabled = true;
+        try {
+          const API_BASE = import.meta.env.PUBLIC_API_BASE || "http://localhost:8000";
+          const res = await fetch(API_BASE + "/auth/verify-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: registeredUserId, email: registeredEmail, otp }),
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(payload?.detail || payload?.message || "OTP verification failed");
+          }
+          verifySuccess.textContent = payload?.message || "Email verified successfully.";
+          verifySuccess.classList.remove("hidden");
+          setTimeout(() => {
+            window.location.href = "/dashboard";
+          }, 1000);
+        } catch (err: any) {
+          verifyError.textContent = err?.message || "OTP verification failed";
+          verifyError.classList.remove("hidden");
+        } finally {
+          verifyBtn.disabled = false;
+        }
+      });
+
+      resendBtn.addEventListener("click", async () => {
+        verifyError.classList.add("hidden");
+        verifySuccess.classList.add("hidden");
+
+        if (!registeredUserId || !registeredEmail) {
+          verifyError.textContent = "Missing registration context. Please register again.";
+          verifyError.classList.remove("hidden");
+          return;
+        }
+
+        resendBtn.disabled = true;
+        try {
+          const API_BASE = import.meta.env.PUBLIC_API_BASE || "http://localhost:8000";
+          const res = await fetch(API_BASE + "/auth/resend-email-otp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: registeredUserId, email: registeredEmail }),
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(payload?.detail || payload?.message || "Failed to resend OTP");
+          }
+          verifySuccess.textContent = payload?.message || "Verification OTP sent.";
+          verifySuccess.classList.remove("hidden");
+        } catch (err: any) {
+          verifyError.textContent = err?.message || "Failed to resend OTP";
+          verifyError.classList.remove("hidden");
+        } finally {
+          resendBtn.disabled = false;
+        }
       });
     });
   </script>

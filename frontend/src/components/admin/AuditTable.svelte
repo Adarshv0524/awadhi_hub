@@ -116,11 +116,11 @@
   {#if error}
     <p class="admin-state-bad">{error}</p>
   {:else}
-    <div class="mb-4 flex justify-between items-center">
+    <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
       <div class="text-sm">
         Page {currentPage} of {Math.ceil(total / pageSize)} • {total} total logs
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <button 
           on:click={exportCSV}
           disabled={exporting}
@@ -154,24 +154,25 @@
       </div>
     </div>
 
-    <table class="w-full border text-sm">
-      <thead>
-        <tr class="text-left">
-          <th class="py-2">ID</th>
-          <th>Actor User ID</th>
-          <th>Action</th>
-          <th>Resource Type</th>
-          <th>Resource ID</th>
-          <th>Before</th>
-          <th>After</th>
-          <th>Metadata</th>
-          <th>Created</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each rows as log}
-          <tr class="border-t">
+    <div class="admin-table-wrap">
+      <table class="w-full border text-sm">
+        <thead>
+          <tr class="text-left">
+            <th class="py-2">ID</th>
+            <th>Actor User ID</th>
+            <th>Action</th>
+            <th>Resource Type</th>
+            <th>Resource ID</th>
+            <th>Before</th>
+            <th>After</th>
+            <th>Metadata</th>
+            <th>Created</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each rows as log}
+            <tr class="border-t">
             <td class="py-2">{log.id}</td>
             <td>{log.actor_user_id ?? "-"}</td>
             <td>{log.action}</td>
@@ -189,10 +190,11 @@
                 View Details
               </button>
             </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
   {/if}
 {/if}
 

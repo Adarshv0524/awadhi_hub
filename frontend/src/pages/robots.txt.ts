@@ -8,8 +8,8 @@ User-agent: *
 
 # Allow public content
 Allow: /
-Allow: /doha
-Allow: /doha/*
+Allow: /poetry
+Allow: /poetry/*
 Allow: /dictionary
 Allow: /dictionary/*
 Allow: /idioms
@@ -17,6 +17,8 @@ Allow: /idioms/*
 Allow: /articles
 Allow: /articles/*
 Allow: /authors
+Allow: /*/*
+Allow: /*/*/*
 Allow: /search
 Allow: /about
 

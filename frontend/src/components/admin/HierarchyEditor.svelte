@@ -226,7 +226,7 @@
   <ul class="space-y-2">
     {#each authors as a}
       <li class="admin-panel p-3">
-        <div class="flex justify-between items-start gap-4">
+        <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
           <div class="flex-1">
             {#if editingAuthor?.id === a.id}
               <input bind:value={editingAuthor.name} class="w-full p-2 border rounded mb-2" placeholder="Name" />
@@ -239,7 +239,7 @@
               {#if a.language}<div class="text-xs text-slate-400 mt-1">Language: {a.language}</div>{/if}
             {/if}
           </div>
-          <div class="flex gap-2">
+          <div class="flex flex-wrap gap-2">
             {#if editingAuthor?.id === a.id}
               <button on:click={() => updateAuthor(a.id)} class="admin-btn admin-btn-primary">Save</button>
               <button on:click={() => editingAuthor = null} class="admin-btn">Cancel</button>
@@ -258,7 +258,7 @@
             <ul class="space-y-2">
               {#each works as w}
                 <li class="p-2 bg-slate-900/55 rounded border border-slate-700">
-                  <div class="flex justify-between items-start gap-3">
+                  <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
                     <div class="flex-1">
                       {#if editingWork?.id === w.id}
                         <input bind:value={editingWork.title} class="w-full p-2 border rounded mb-2" placeholder="Title" />
@@ -269,7 +269,7 @@
                         {#if w.description}<div class="text-xs text-slate-300 mt-1">{w.description}</div>{/if}
                       {/if}
                     </div>
-                    <div class="flex gap-2">
+                    <div class="flex flex-wrap gap-2">
                       {#if editingWork?.id === w.id}
                         <button on:click={() => updateWork(w.id)} class="admin-btn admin-btn-primary">Save</button>
                         <button on:click={() => editingWork = null} class="admin-btn">Cancel</button>
@@ -299,7 +299,7 @@
                                 </div>
                               </div>
                             {:else}
-                              <div class="flex justify-between items-center gap-2">
+                              <div class="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center">
                                 <div>
                                   <span class="font-medium">Ch {c.number}:</span> {c.title} <span class="text-slate-400">({c.slug})</span>
                                 </div>

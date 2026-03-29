@@ -1,12 +1,15 @@
 # app/api/v1/analytics.py
 
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func
+
+logger = logging.getLogger(__name__)
 
 from app.db.session import get_db
 from app.core.security import require_role
@@ -416,6 +419,20 @@ def admin_rbac_denials_v2(
         return rbac_denials_by_role_path(db, start, end)
     except SQLAlchemyError:
         return []
+
+
+@admin_router.get(
+    "/v2/moderation-kpi",
+    response_model=AnalyticsSummaryOut,
+    dependencies=[Depends(require_role(Role.MODERATOR))],
+)
+def admin_moderation_kpi_v2(db=Depends(get_db)):
+    """Moderation key performance indicators snapshot."""
+    try:
+        return analytics_summary(db)
+    except Exception as e:
+        logger.exception("Error fetching moderation KPI")
+        return AnalyticsSummaryOut(today_approved=0, pending_review=0, total_approved=0)
 
 
 @admin_router.get("/v2/events", response_model=List[AdminEventTrailOut])

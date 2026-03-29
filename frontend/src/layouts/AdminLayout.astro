@@ -60,10 +60,26 @@ const currentPath = Astro.url.pathname;
       <div class="admin-content-shell">
         <header class="admin-topbar">
           <h1 class="admin-topbar-title">{title.replace(' · Admin', '')}</h1>
-          <div class="admin-user-pill">
-            <span id="admin-username">Loading...</span>
+          <div class="admin-topbar-actions">
+            <button id="admin-mobile-nav-toggle" class="admin-mobile-nav-toggle" aria-expanded="false" aria-controls="admin-mobile-nav">
+              Menu
+            </button>
+            <div class="admin-user-pill">
+              <span id="admin-username">Loading...</span>
+            </div>
           </div>
         </header>
+
+        <nav id="admin-mobile-nav" class="admin-mobile-nav" aria-label="Admin mobile navigation" hidden>
+          <a href="/admin" class="admin-nav-link" data-active={currentPath === '/admin'}>Dashboard</a>
+          <a href="/admin/users" class="admin-nav-link" data-active={currentPath === '/admin/users'}>Users</a>
+          <a href="/admin/hierarchy" class="admin-nav-link" data-active={currentPath === '/admin/hierarchy'}>Hierarchy</a>
+          <a href="/admin/settings" class="admin-nav-link" data-active={currentPath === '/admin/settings'}>Settings</a>
+          <a href="/admin/audit" class="admin-nav-link" data-active={currentPath === '/admin/audit'}>Audit Logs</a>
+          <a href="/admin/analytics" class="admin-nav-link" data-active={currentPath === '/admin/analytics'}>Analytics</a>
+          <a href="/moderation" class="admin-nav-link">Moderation</a>
+          <a href="/" class="admin-nav-link">Public Site</a>
+        </nav>
 
         <main id="admin-main-content" class="admin-main flex-1">
           <slot />
@@ -77,13 +93,35 @@ const currentPath = Astro.url.pathname;
 
     <script is:inline>
       (async function() {
+        const toggle = document.getElementById("admin-mobile-nav-toggle");
+        const mobileNav = document.getElementById("admin-mobile-nav");
+        if (toggle && mobileNav) {
+          const setOpen = function (open) {
+            toggle.setAttribute("aria-expanded", String(open));
+            mobileNav.hidden = !open;
+          };
+          toggle.addEventListener("click", function () {
+            const expanded = toggle.getAttribute("aria-expanded") === "true";
+            setOpen(!expanded);
+          });
+          mobileNav.addEventListener("click", function (event) {
+            const target = event.target;
+            if (target instanceof HTMLElement && target.closest("a")) {
+              setOpen(false);
+            }
+          });
+          document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") setOpen(false);
+          });
+        }
+
         try {
           const el = document.getElementById("admin-username");
           if (!el) return;
 
           const applyUser = function (user) {
             if (!user) return;
-            el.textContent = `@${user.username || user.email || "admin"}`;
+            el.textContent = user.name || user.username || user.email || "admin";
           };
 
           if (window.__awadhiAuthGuardMe) {

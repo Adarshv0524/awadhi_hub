@@ -40,7 +40,7 @@ class ModerationSubmissionOut(BaseModel):
 class ModerationActionIn(BaseModel):
     note: Optional[str] = None
     guideline_version: Optional[str] = None
-    approved_by_human: bool = False
+    approved_by_human: bool = True
     model_recommendation_id: Optional[str] = None
     model_confidence: Optional[float] = None
     model_rationale_snippets: List[str] = Field(default_factory=list)
@@ -136,10 +136,16 @@ def get_submission_for_moderation(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(Role.MODERATOR)),
 ):
-    sub = db.query(Submission).filter(Submission.id == submission_id, Submission.is_deleted == False).first()
-    if not sub:
-        raise HTTPException(status_code=404, detail="Submission not found")
-    return sub
+    try:
+        sub = db.query(Submission).filter(Submission.id == submission_id, Submission.is_deleted == False).first()
+        if not sub:
+            raise HTTPException(status_code=404, detail="Submission not found")
+        return sub
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error retrieving submission %s", submission_id)
+        raise HTTPException(status_code=500, detail="Failed to retrieve submission")
 
 
 @router.post(

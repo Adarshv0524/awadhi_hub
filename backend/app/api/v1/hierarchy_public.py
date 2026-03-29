@@ -49,6 +49,18 @@ class WorkOut(BaseModel):
     work_type: Optional[str]
     poetry_nodes_count: int = 0
 
+
+class WorkSearchOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    slug: str
+    title: str
+    work_type: Optional[str]
+    poetry_nodes_count: int = 0
+    author_slug: str
+    author_name: str
+
 class WorkDetailOut(WorkOut):
     original_script: Optional[str]
 
@@ -91,6 +103,70 @@ def list_authors(
         .all()
     )
     return authors
+
+
+@router.get("/works/search", response_model=List[WorkSearchOut])
+def search_works(
+    db: Session = Depends(get_db),
+    q: Optional[str] = Query(None, description="Search in work title or author name"),
+    work_type: Optional[str] = Query(None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """
+    Public: search works globally by work title and optionally author name.
+    """
+    query = (
+        db.query(
+            ClassicalWork,
+            ClassicalAuthor.slug.label("author_slug"),
+            ClassicalAuthor.name.label("author_name"),
+            func.count(PoetryNode.id).label("poetry_nodes_count"),
+        )
+        .join(ClassicalAuthor, ClassicalAuthor.id == ClassicalWork.author_id)
+        .outerjoin(
+            PoetryNode,
+            (PoetryNode.work_id == ClassicalWork.id)
+            & (PoetryNode.is_deleted == False)
+            & (PoetryNode.status == "active")
+            & (PoetryNode.visibility == "public"),
+        )
+        .filter(
+            ClassicalWork.is_deleted == False,
+            ClassicalAuthor.is_deleted == False,
+        )
+    )
+
+    if work_type:
+        query = query.filter(ClassicalWork.work_type == work_type)
+
+    if q:
+        pattern = f"%{q}%"
+        query = query.filter(
+            ClassicalWork.title.ilike(pattern)
+            | ClassicalAuthor.name.ilike(pattern)
+        )
+
+    rows = (
+        query.group_by(ClassicalWork.id, ClassicalAuthor.slug, ClassicalAuthor.name)
+        .order_by(ClassicalAuthor.name.asc(), ClassicalWork.title.asc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    return [
+        WorkSearchOut(
+            id=work.id,
+            slug=work.slug,
+            title=work.title,
+            work_type=work.work_type,
+            poetry_nodes_count=int(poetry_nodes_count or 0),
+            author_slug=author_slug,
+            author_name=author_name,
+        )
+        for work, author_slug, author_name, poetry_nodes_count in rows
+    ]
 
 
 @router.get("/{author_slug}", response_model=AuthorDetailOut)

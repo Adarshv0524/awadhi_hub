@@ -11,6 +11,7 @@
     text_romanized?: string | null;
     meaning?: string | null;
   };
+  export let mode: "default" | "chapter" = "default";
 
   type SafeMedia = {
     type: MediaType;
@@ -61,17 +62,22 @@
   $: safeMedia = parseSafeMedia(poetryNode);
 </script>
 
-<article class="rounded-xl border border-slate-500/40 bg-slate-800/30 p-4 md:p-5" aria-labelledby={`poetry-${poetryNode.id}`}>
+<article
+  class={mode === "chapter" ? "py-1" : "rounded-xl border border-slate-500/40 bg-slate-800/30 p-4 md:p-5"}
+  aria-labelledby={`poetry-${poetryNode.id}`}
+>
+  {#if mode !== "chapter"}
   <header class="mb-3 flex items-center justify-between gap-3">
     <span class="rounded-full border border-slate-400/40 bg-slate-500/10 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-200">
       {poetryNode.poetry_type || "other_poetry"}
     </span>
     <span class="text-xs text-slate-400">#{poetryNode.sequence_no}</span>
   </header>
+  {/if}
 
   <h2 id={`poetry-${poetryNode.id}`} class="sr-only">Poetry item {poetryNode.sequence_no}</h2>
 
-  <p class="whitespace-pre-wrap text-lg leading-relaxed text-slate-100">{poetryNode.main_text}</p>
+  <p class={mode === "chapter" ? "whitespace-pre-wrap text-[1.14rem] leading-[1.72] text-slate-100" : "whitespace-pre-wrap text-lg leading-relaxed text-slate-100"}>{poetryNode.main_text}</p>
 
   {#if safeMedia?.type === "image"}
     <figure class="mt-4 overflow-hidden rounded-lg border border-slate-500/30 bg-slate-900/40">
@@ -92,8 +98,10 @@
   {/if}
 
   {#if poetryNode.meaning}
-    <p class="mt-3 border-l-2 border-slate-400/30 pl-3 text-sm text-slate-300">{poetryNode.meaning}</p>
+    <p class={mode === "chapter" ? "mt-1.5 text-[0.94rem] leading-6 text-slate-400" : "mt-3 border-l-2 border-slate-400/30 pl-3 text-sm text-slate-300"}>{poetryNode.meaning}</p>
   {/if}
 
-  <p class="mt-3 text-xs text-slate-400">Fallback renderer active for unknown type. The reader remains stable.</p>
+  {#if mode !== "chapter"}
+    <p class="mt-3 text-xs text-slate-400">Fallback renderer active for unknown type. The reader remains stable.</p>
+  {/if}
 </article>

@@ -17,6 +17,8 @@ from app.db.models import (
     IdiomEntry,
     ArticleEntry,
 )
+from app.core.security import get_current_user
+from app.services.email_verification_service import send_verification_otp
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -25,8 +27,31 @@ class PublicUserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    name: Optional[str] = None
+    bio: Optional[str] = None
     username: Optional[str]
     role: str
+    created_at: Optional[datetime] = None
+
+
+class UserProfileUpdateIn(BaseModel):
+    """User profile update model for self-service edits (username, name, bio, email)."""
+    username: Optional[str] = None
+    name: Optional[str] = None
+    bio: Optional[str] = None
+    email: Optional[str] = None
+
+
+class UserProfileUpdateOut(BaseModel):
+    id: int
+    username: Optional[str]
+    name: Optional[str] = None
+    bio: Optional[str] = None
+    email: str
+    role: str
+    pending_email: Optional[str] = None
+    email_verification_required: bool = False
+    message: Optional[str] = None
 
 class UserStatsOut(BaseModel):
     username: str = Field(..., description="Public username for the profile.")
@@ -47,6 +72,98 @@ class UserStatsOut(BaseModel):
         description="Average engagement score across approved public contributions.",
     )
     joined_date: datetime = Field(..., description="Account creation timestamp.")
+
+
+@router.patch("/me", response_model=UserProfileUpdateOut)
+def update_own_profile(
+    data: UserProfileUpdateIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Allow authenticated users to update their own profile (username and email only)."""
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    email_changed = False
+
+    if data.username is not None:
+        normalized_username = data.username.strip() if isinstance(data.username, str) else data.username
+        if normalized_username == "":
+            normalized_username = None
+
+        if normalized_username != user.username and normalized_username is not None:
+            username_taken = (
+                db.query(User)
+                .filter(User.username == normalized_username, User.id != user.id)
+                .first()
+            )
+            if username_taken:
+                raise HTTPException(status_code=400, detail="Username already taken")
+
+        user.username = normalized_username
+
+    if data.name is not None:
+        normalized_name = data.name.strip() if isinstance(data.name, str) else data.name
+        if normalized_name == "":
+            normalized_name = None
+        user.name = normalized_name
+
+    if data.bio is not None:
+        normalized_bio = data.bio.strip() if isinstance(data.bio, str) else data.bio
+        if normalized_bio == "":
+            normalized_bio = None
+        # Keep bio concise for profile rendering and payload hygiene.
+        if normalized_bio and len(normalized_bio) > 600:
+            raise HTTPException(status_code=400, detail="Bio must be 600 characters or fewer")
+        user.bio = normalized_bio
+    
+    if data.email is not None and data.email != user.email:
+        email_taken = db.query(User).filter(User.email == data.email, User.id != user.id).first()
+        if email_taken:
+            raise HTTPException(status_code=400, detail="Email already in use")
+
+        # Email is changing - stage it for verification instead of updating directly
+        user.pending_email = data.email
+        email_changed = True
+        
+        # Send verification OTP to new email address
+        try:
+            send_verification_otp(db, user.id, data.email)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to send verification OTP for user {user.id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to send verification email")
+    
+    db.commit()
+    db.refresh(user)
+    
+    response = {
+        "id": user.id,
+        "username": user.username,
+        "name": user.name,
+        "bio": user.bio,
+        "email": user.email,
+        "role": user.role,
+        "pending_email": user.pending_email,
+        "email_verification_required": False,
+    }
+    
+    if email_changed:
+        response["email_verification_required"] = True
+        response["message"] = f"Verification OTP sent to {data.email}. Please verify it to complete email change."
+    
+    return response
+
+
+@router.get("/id/{user_id}", response_model=PublicUserOut)
+def get_public_user_by_id(user_id: int, db: Session = Depends(get_db)):
+    """Get public user info by numeric ID (for moderation contributor lookup)."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
 
 @router.get("/{username}", response_model=PublicUserOut)

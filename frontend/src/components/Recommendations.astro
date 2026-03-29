@@ -30,7 +30,29 @@ const {
 
 import { api } from "../lib/api";
 
-let recItems = [];
+type RecItem = {
+  id?: number | string;
+  pk?: number | string;
+  slug?: string;
+  score?: number;
+  content_type?: string;
+  type?: string;
+  item_type?: string;
+  main_text?: string;
+  meaning?: string;
+  excerpt?: string;
+  body?: string;
+  title?: string;
+  title_or_text?: string;
+  lemma_devanagari?: string;
+  lemma_roman?: string;
+  text_devanagari?: string;
+  word?: string;
+  __canonicalPath?: string | null;
+  [key: string]: unknown;
+};
+
+let recItems: RecItem[] = [];
 let apiError = null;
 let shouldRender = true;
 
@@ -53,37 +75,42 @@ if (!contentType || !contentId) {
   }
 }
 
-function normalizePayload(payload) {
+function normalizePayload(payload: unknown): RecItem[] {
   if (!payload) return [];
   if (Array.isArray(payload)) return payload;
-  if (payload.results && Array.isArray(payload.results)) return payload.results;
-  if (payload.items && Array.isArray(payload.items)) return payload.items;
+  if (typeof payload === "object" && payload !== null) {
+    const candidate = payload as Record<string, unknown>;
+    if (Array.isArray(candidate.results)) return candidate.results as RecItem[];
+    if (Array.isArray(candidate.items)) return candidate.items as RecItem[];
+  }
   // try to find the first array-valued field
-  for (const v of Object.values(payload)) {
-    if (Array.isArray(v)) return v;
+  if (typeof payload === "object" && payload !== null) {
+    for (const v of Object.values(payload)) {
+      if (Array.isArray(v)) return v as RecItem[];
+    }
   }
   return [];
 }
 
 /** derive canonical path for known types; returns null if cannot */
-function canonicalPathFor(item) {
+function canonicalPathFor(item: RecItem): string | null {
   if (!item) return null;
   const t = (item.content_type || item.type || item.item_type || "").toString().toLowerCase();
   const id = item.id ?? item.pk ?? item.slug;
   if (!id) return null;
-  if (t === "doha" || t === "dohas") return `/doha/${id}`;
+  if (t === "doha" || t === "dohas") return `/poetry/${id}`;
   if (t === "dictionary") return `/dictionary/${id}`;
   if (t === "idiom" || t === "idioms") return `/idioms/${id}`;
   if (t === "article" || t === "articles") return `/articles/${id}`;
   // If backend didn't provide a content_type, guess based on fields
-  if (item.main_text) return `/doha/${id}`;
+  if (item.main_text) return `/poetry/${id}`;
   if (item.lemma_devanagari || item.lemma_roman) return `/dictionary/${id}`;
   if (item.title) return `/articles/${id}`;
   return null;
 }
 
 /** produce label for item based on type and available fields */
-function labelFor(item) {
+function labelFor(item: RecItem): string {
   if (!item) return "";
   // Prefer backend-provided friendly label if available
   if (item.title_or_text) return String(item.title_or_text);
@@ -103,7 +130,7 @@ function labelFor(item) {
 }
 
 /** produce snippet (short) for display under label */
-function snippetFor(item) {
+function snippetFor(item: RecItem): string {
   if (!item) return "";
   if (item.meaning) return String(item.meaning).slice(0, 180);
   if (item.excerpt) return String(item.excerpt).slice(0, 180);
@@ -128,7 +155,7 @@ if (shouldRender) {
     let items = normalizePayload(payload);
 
     // Filter: strict same-type only
-    items = items.filter(it => {
+    items = items.filter((it: RecItem) => {
       const t = (it.content_type || it.type || it.item_type || "").toString().toLowerCase();
       // Some backends use singular/plural variants
       const normalized = t.replace(/s$/, "");
@@ -136,16 +163,16 @@ if (shouldRender) {
     });
 
     // Defensive: items must carry an id (or pk/slug)
-    items = items.filter(it => (it.id ?? it.pk ?? it.slug));
+    items = items.filter((it: RecItem) => (it.id ?? it.pk ?? it.slug));
 
     // Build canonical path and drop items that cannot map
-    items = items.map(it => {
+    items = items.map((it: RecItem) => {
       const path = canonicalPathFor(it);
       return { ...it, __canonicalPath: path };
-    }).filter(it => it.__canonicalPath);
+    }).filter((it: RecItem) => it.__canonicalPath);
 
     // Sort: by score desc (if present), then id asc
-    items.sort((a, b) => {
+    items.sort((a: RecItem, b: RecItem) => {
       const sa = typeof a.score === "number" ? a.score : 0;
       const sb = typeof b.score === "number" ? b.score : 0;
       if (sb !== sa) return sb - sa;
@@ -174,7 +201,7 @@ if (shouldRender) {
     </h2>
 
     <ul class="space-y-3">
-      {recItems.map((it) => {
+      {recItems.map((it: RecItem) => {
         const url = it.__canonicalPath;
         const label = labelFor(it);
         const snippet = snippetFor(it);

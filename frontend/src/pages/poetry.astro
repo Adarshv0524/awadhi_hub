@@ -1,0 +1,216 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { api } from "../lib/api";
+
+const url = new URL(Astro.request.url);
+const q = (url.searchParams.get("q") || "").trim();
+const typeFilter = (url.searchParams.get("type") || url.searchParams.get("poetry_type") || "all").trim();
+const author = (url.searchParams.get("author") || "").trim();
+const work = (url.searchParams.get("work") || "").trim();
+const sort = (url.searchParams.get("sort") || "recent").trim();
+const pageRaw = Number(url.searchParams.get("page") || "1");
+const page = Number.isFinite(pageRaw) ? Math.max(1, Math.floor(pageRaw)) : 1;
+const limit = 40;
+const offset = (page - 1) * limit;
+
+const params = new URLSearchParams();
+if (q) params.set("q", q);
+if (author) params.set("author", author);
+if (work) params.set("work", work);
+if (sort === "recent" || sort === "relevance") params.set("sort", sort);
+params.set("offset", String(offset));
+params.set("limit", String(limit));
+if (typeFilter && typeFilter !== "all") params.set("poetry_type", typeFilter);
+
+type PoetryResultItem = {
+  id: number;
+  poetry_type: string;
+  sequence_no: number;
+  main_text: string;
+  meaning?: string;
+  chapter_path: string;
+};
+
+type PoetrySearchOut = {
+  total: number;
+  results: PoetryResultItem[];
+};
+
+let payload: PoetrySearchOut = { total: 0, results: [] };
+let error: string | null = null;
+
+try {
+  payload = await api<PoetrySearchOut>(`/api/v1/poetry/search?${params.toString()}`);
+} catch (e) {
+  error = "Unable to load poetry entries right now.";
+  if (import.meta.env.DEV) console.error("[poetry list] fetch error", e);
+}
+
+const total = Number(payload?.total || 0);
+const items = Array.isArray(payload?.results) ? payload.results : [];
+const totalPages = Math.max(1, Math.ceil(total / limit));
+const hasNext = offset + items.length < total;
+const hasPrev = page > 1;
+const paginationWindow = 2;
+
+const heading = typeFilter && typeFilter !== "all"
+  ? `${typeFilter.charAt(0).toUpperCase()}${typeFilter.slice(1)} Collection`
+  : "Poetry Collection";
+
+const description = typeFilter && typeFilter !== "all"
+  ? `Browse all ${typeFilter} entries across authors, works, and chapters in one polymorphic poetry catalog.`
+  : "Browse Awadhi poetry entries across all forms, including doha, chaupai, sorath, and more.";
+
+function pageHref(nextPage: number): string {
+  const p = new URLSearchParams();
+  if (q) p.set("q", q);
+  if (author) p.set("author", author);
+  if (work) p.set("work", work);
+  if (sort === "recent" || sort === "relevance") p.set("sort", sort);
+  if (typeFilter && typeFilter !== "all") p.set("type", typeFilter);
+  p.set("page", String(nextPage));
+  return `/poetry?${p.toString()}`;
+}
+
+function getPageItems(totalPageCount: number, currentPage: number, windowSize = 2): Array<number | "ellipsis"> {
+  const pages = new Set<number>([1, totalPageCount, currentPage]);
+  for (let i = currentPage - windowSize; i <= currentPage + windowSize; i += 1) {
+    if (i >= 1 && i <= totalPageCount) pages.add(i);
+  }
+
+  const sorted = Array.from(pages).sort((a, b) => a - b);
+  const out: Array<number | "ellipsis"> = [];
+
+  for (let i = 0; i < sorted.length; i += 1) {
+    const value = sorted[i];
+    if (i > 0 && value - sorted[i - 1] > 1) {
+      out.push("ellipsis");
+    }
+    out.push(value);
+  }
+
+  return out;
+}
+
+const pageItems = getPageItems(totalPages, page, paginationWindow);
+---
+
+<BaseLayout title={`${heading} · Awadhi New`} description={description} canonicalURL="https://awadhi.new/poetry">
+  <div class="mx-auto max-w-5xl px-4 py-8">
+    <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h1 class="text-3xl font-serif text-slate-100">{heading}</h1>
+        <p class="mt-2 text-sm text-slate-400">
+          {total} result{total === 1 ? "" : "s"}
+          {typeFilter && typeFilter !== "all" ? ` for type: ${typeFilter}` : " across all poetry types"}
+        </p>
+      </div>
+      <a href="/search" class="text-sm text-cyan-300 hover:text-cyan-200">Advanced search</a>
+    </div>
+
+    {error && (
+      <div class="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>
+    )}
+
+    {!error && items.length === 0 && (
+      <div class="rounded-lg border border-slate-700 bg-slate-900/45 p-8 text-center text-slate-400">
+        No poetry entries matched this filter.
+      </div>
+    )}
+
+    {!error && items.length > 0 && (
+      <ul class="space-y-3">
+        {items.map((item) => (
+          <li class="rounded-xl border border-slate-700 bg-slate-900/50 p-4 hover:border-cyan-500/50">
+            <a href={`/poetry/${item.id}`} class="block">
+              <div class="mb-2 flex items-center justify-between gap-2">
+                <span class="rounded-full border border-cyan-500/40 bg-cyan-500/10 px-2.5 py-1 text-xs uppercase tracking-wide text-cyan-200">
+                  {item.poetry_type}
+                </span>
+                <span class="text-xs text-slate-500">#{item.sequence_no}</span>
+              </div>
+              <p class="text-lg text-slate-100 line-clamp-2">{item.main_text}</p>
+              {item.meaning && <p class="mt-2 text-sm text-slate-400 line-clamp-2">{item.meaning}</p>}
+              <p class="mt-2 text-xs text-slate-500">/{item.chapter_path}</p>
+            </a>
+          </li>
+        ))}
+      </ul>
+    )}
+
+    {!error && total > 0 && (
+      <nav class="mt-6 flex flex-wrap items-center justify-center gap-2" aria-label="Poetry list pagination">
+        <a
+          href={hasPrev ? pageHref(1) : "#"}
+          aria-disabled={!hasPrev}
+          class:list={[
+            "rounded-md border px-3 py-2 text-sm",
+            hasPrev
+              ? "border-slate-600 text-slate-200 hover:bg-slate-800"
+              : "pointer-events-none border-slate-800 text-slate-600",
+          ]}
+        >
+          First
+        </a>
+        <a
+          href={hasPrev ? pageHref(page - 1) : "#"}
+          aria-disabled={!hasPrev}
+          class:list={[
+            "rounded-md border px-3 py-2 text-sm",
+            hasPrev
+              ? "border-slate-600 text-slate-200 hover:bg-slate-800"
+              : "pointer-events-none border-slate-800 text-slate-600",
+          ]}
+        >
+          Previous
+        </a>
+
+        {pageItems.map((item, index) => (
+          item === "ellipsis" ? (
+            <span class="px-2 text-slate-500" aria-hidden="true">...</span>
+          ) : (
+            <a
+              href={pageHref(item)}
+              aria-current={item === page ? "page" : undefined}
+              class:list={[
+                "rounded-md border px-3 py-2 text-sm",
+                item === page
+                  ? "border-cyan-500/70 bg-cyan-500/15 text-cyan-200"
+                  : "border-slate-700 text-slate-300 hover:bg-slate-800",
+              ]}
+            >
+              {item}
+            </a>
+          )
+        ))}
+
+        <a
+          href={hasNext ? pageHref(page + 1) : "#"}
+          aria-disabled={!hasNext}
+          class:list={[
+            "rounded-md border px-3 py-2 text-sm",
+            hasNext
+              ? "border-slate-600 text-slate-200 hover:bg-slate-800"
+              : "pointer-events-none border-slate-800 text-slate-600",
+          ]}
+        >
+          Next
+        </a>
+        <a
+          href={hasNext ? pageHref(totalPages) : "#"}
+          aria-disabled={!hasNext}
+          class:list={[
+            "rounded-md border px-3 py-2 text-sm",
+            hasNext
+              ? "border-slate-600 text-slate-200 hover:bg-slate-800"
+              : "pointer-events-none border-slate-800 text-slate-600",
+          ]}
+        >
+          Last
+        </a>
+      </nav>
+    )}
+  </div>
+</BaseLayout>

@@ -27,8 +27,8 @@ CRITICAL_SETTING_KEYS = {
 
 
 class RateLimitAction(BaseModel):
-    limit: int = Field(ge=1)
-    window_seconds: int = Field(ge=1)
+    limit: int = Field(default=60, ge=1)
+    window_seconds: int = Field(default=3600, ge=1)
 
 
 class RateLimitsModel(BaseModel):

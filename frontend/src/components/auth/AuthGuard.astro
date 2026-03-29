@@ -8,6 +8,11 @@ const apiBase: string = Astro.props.apiBase || (import.meta.env.PUBLIC_API_BASE 
 
 <script is:inline define:vars={{ apiBase, minRole }}>
 	(async function () {
+		function loginRedirectUrl() {
+			const path = `${window.location.pathname || "/"}${window.location.search || ""}`;
+			return `/login?next=${encodeURIComponent(path)}`;
+		}
+
 		function emitAuthPolicy(eventName, decision, reason, statusCode, details) {
 			const payload = {
 				event_name: eventName,
@@ -40,14 +45,14 @@ const apiBase: string = Astro.props.apiBase || (import.meta.env.PUBLIC_API_BASE 
 			const token = window.localStorage.getItem("awadhi_access_token");
 			if (!token) {
 				emitAuthPolicy("auth_guard_decision", "deny", "missing_token", 401, { has_token: false });
-				window.location.href = "/login";
+				window.location.href = loginRedirectUrl();
 				return;
 			}
 
 			if (!apiBase) {
 				// No API base configured; safest behavior is to force login.
 				emitAuthPolicy("auth_guard_decision", "deny", "missing_api_base", null, { has_token: true });
-				window.location.href = "/login";
+				window.location.href = loginRedirectUrl();
 				return;
 			}
 
@@ -60,7 +65,7 @@ const apiBase: string = Astro.props.apiBase || (import.meta.env.PUBLIC_API_BASE 
 				window.localStorage.removeItem("awadhi_access_token");
 				window.localStorage.removeItem("awadhi_refresh_token");
 				window.localStorage.removeItem("awadhi_user_cache");
-				window.location.href = "/login";
+				window.location.href = loginRedirectUrl();
 				return;
 			}
 

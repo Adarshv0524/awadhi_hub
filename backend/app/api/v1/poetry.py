@@ -48,6 +48,9 @@ class PoetryCurrentOut(BaseModel):
     poetry_type: str
     sequence_no: int
     main_text: str
+    text_devanagari: Optional[str] = None
+    text_romanized: Optional[str] = None
+    meaning: Optional[str] = None
     prosody_metadata: Optional[dict[str, Any]] = None
 
 

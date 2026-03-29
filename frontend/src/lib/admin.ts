@@ -203,14 +203,23 @@ export interface ModerationTriageRecommendation {
 }
 
 // User Management
-export async function getUsers(limit = 100, offset = 0, apiBaseOverride?: string): Promise<AdminUser[]> {
+export async function getUsers(
+  limit = 100,
+  offset = 0,
+  apiBaseOverride?: string,
+  searchQuery = "",
+): Promise<AdminUser[]> {
   const base = resolveApiBase(apiBaseOverride);
   if (!base) {
     throw new Error("Admin API base URL is not configured. Set PUBLIC_API_BASE.");
   }
 
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const q = (searchQuery || "").trim();
+  if (q) params.set("q", q);
+
   try {
-    const res = await fetchWithLocalFallback(`${base}/admin/users?limit=${limit}&offset=${offset}`, {
+    const res = await fetchWithLocalFallback(`${base}/admin/users?${params.toString()}`, {
       headers: getAuthHeader(),
     });
     if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`);

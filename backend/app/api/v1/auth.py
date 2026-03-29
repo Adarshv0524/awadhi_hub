@@ -1,23 +1,31 @@
 # app/api/v1/auth.py
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from datetime import datetime, timedelta, timezone
+import logging
+import secrets
+from urllib.parse import quote, urlencode
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta, timezone
-from urllib.parse import quote, urlencode
-import secrets
 from starlette.status import HTTP_429_TOO_MANY_REQUESTS
 
-from fastapi.responses import RedirectResponse
-
-from app.db.session import get_db
-from app.db.models import User, RefreshToken, OAuthAccount, SystemSetting
-from app.auth.hash import hash_password, verify_password
-from app.auth.jwt import create_access_token, create_refresh_token, create_password_reset_token, decode_token
 from app.auth.google import exchange_code_for_tokens, fetch_google_profile
-from app.core.settings import settings
+from app.auth.hash import hash_password, verify_password
+from app.auth.jwt import create_access_token, create_password_reset_token, create_refresh_token, decode_token
 from app.core.security import get_current_user
-from app.services.rate_limit import check_and_increment
+from app.core.settings import settings
+from app.db.models import OAuthAccount, RefreshToken, SystemSetting, User
+from app.db.session import get_db
 from app.services.email_service import send_password_reset_email
+from app.services.email_verification_service import (
+    get_pending_email_verification,
+    send_verification_otp,
+    verify_email_otp,
+)
+from app.services.rate_limit import check_and_increment
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -50,6 +58,22 @@ class ResetPasswordIn(BaseModel):
     new_password: str
 
 
+class VerifyEmailOtpIn(BaseModel):
+    user_id: int
+    email: EmailStr
+    otp: str
+
+
+class VerifyEmailOtpOut(BaseModel):
+    success: bool
+    message: str
+
+
+class ResendEmailOtpIn(BaseModel):
+    user_id: int
+    email: EmailStr
+
+
 def _frontend_oauth_callback_url() -> str:
     return f"{settings.FRONTEND_BASE_URL.rstrip('/')}/oauth/callback"
 
@@ -60,45 +84,61 @@ def _frontend_login_url() -> str:
 
 @router.post("/register")
 def register(data: RegisterIn, db: Session = Depends(get_db)):
-    # 1. Check if Email already exists
     existing_email = db.query(User).filter(User.email == data.email).first()
     if existing_email:
         raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # 2. Check if Username already exists
+
     if data.username:
         existing_username = db.query(User).filter(User.username == data.username).first()
         if existing_username:
             raise HTTPException(status_code=400, detail="Username already taken")
 
-    # 3. Create the user object
     user = User(
         email=data.email,
         username=data.username,
         password_hash=hash_password(data.password),
         role="registered",
     )
-    
+
     try:
         db.add(user)
         db.commit()
         db.refresh(user)
-    except Exception as e:
-        # 4. Rollback in case of any race conditions or other DB errors
+    except Exception:
         db.rollback()
-        raise HTTPException(
-            status_code=500, 
-            detail="An internal error occurred during registration."
-        )
-        
-    return {"id": user.id, "email": user.email, "username": user.username}
+        raise HTTPException(status_code=500, detail="An internal error occurred during registration.")
+
+    # Do not fail registration if email delivery fails.
+    try:
+        send_verification_otp(db, user.id, data.email)
+    except Exception as exc:
+        logger.error("Failed to send verification OTP for user %s: %s", user.id, exc)
+
+    # Keep existing behavior: user gets logged in after registration.
+    access = create_access_token(user.id)
+    refresh = create_refresh_token(user.id)
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(settings.JWT_REFRESH_TOKEN_EXPIRES_SECONDS))
+    db.add(RefreshToken(token=refresh, user_id=user.id, expires_at=expires_at))
+    user.last_login = datetime.now(timezone.utc)
+    db.commit()
+
+    return {
+        "id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "email_verified": bool(getattr(user, "email_verified", False)),
+        "verification_required": True,
+        "message": "Registration successful. Please verify your email.",
+        "access_token": access,
+        "refresh_token": refresh,
+        "token_type": "bearer",
+    }
+
 
 @router.post("/login")
 def login(data: LoginIn, request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == data.email).first()
 
-    # Admin login bypasses rate limiting by requirement.
-    # Non-admin/unknown-user attempts remain rate-limited to protect auth endpoints.
     is_admin_login = bool(user and user.role == "admin")
     if not is_admin_login:
         rate_limits_row = db.query(SystemSetting).filter(SystemSetting.setting_key == "rate_limits").first()
@@ -128,11 +168,11 @@ def login(data: LoginIn, request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active or user.is_banned:
         raise HTTPException(status_code=403, detail="User not allowed")
+
     access = create_access_token(user.id)
     refresh = create_refresh_token(user.id)
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(settings.JWT_REFRESH_TOKEN_EXPIRES_SECONDS))
-    rt = RefreshToken(token=refresh, user_id=user.id, expires_at=expires_at)
-    db.add(rt)
+    db.add(RefreshToken(token=refresh, user_id=user.id, expires_at=expires_at))
     user.last_login = datetime.now(timezone.utc)
     db.commit()
     return {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
@@ -156,15 +196,13 @@ def refresh_token(data: RefreshIn, db: Session = Depends(get_db)):
 
 @router.post("/logout")
 def logout(data: LogoutIn, db: Session = Depends(get_db)):
-    token = data.refresh_token
-    db.query(RefreshToken).filter(RefreshToken.token == token).delete()
+    db.query(RefreshToken).filter(RefreshToken.token == data.refresh_token).delete()
     db.commit()
     return {"ok": True}
 
 
 @router.post("/forgot-password")
 def forgot_password(data: ForgotPasswordIn, db: Session = Depends(get_db)):
-    # Always return generic success to prevent account enumeration.
     user = db.query(User).filter(User.email == data.email).first()
     if user and user.is_active and not user.is_banned:
         token = create_password_reset_token(user.id)
@@ -199,10 +237,8 @@ def reset_password(data: ResetPasswordIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Account is not allowed to reset password")
 
     user.password_hash = hash_password(data.new_password)
-    # Revoke all refresh tokens after password reset to force re-authentication everywhere.
     db.query(RefreshToken).filter(RefreshToken.user_id == user.id).delete()
     db.commit()
-
     return {"ok": True, "message": "Password reset successful"}
 
 
@@ -210,9 +246,14 @@ def reset_password(data: ResetPasswordIn, db: Session = Depends(get_db)):
 def me(current_user: User = Depends(get_current_user)):
     return {
         "id": current_user.id,
+        "name": getattr(current_user, "name", None),
+        "bio": getattr(current_user, "bio", None),
         "email": current_user.email,
         "username": current_user.username,
         "role": current_user.role,
+        "created_at": current_user.created_at,
+        "email_verified": bool(getattr(current_user, "email_verified", False)),
+        "pending_email": getattr(current_user, "pending_email", None),
         "permissions": current_user.permissions,
         "permission_scopes": current_user.permission_scopes,
     }
@@ -326,13 +367,32 @@ async def google_callback(
     db.add(RefreshToken(token=refresh, user_id=user.id, expires_at=expires_at))
     db.commit()
 
-    fragment = urlencode(
-        {
-            "access_token": access,
-            "refresh_token": refresh,
-            "next": redirect_target,
-        }
-    )
+    fragment = urlencode({"access_token": access, "refresh_token": refresh, "next": redirect_target})
     response = RedirectResponse(url=f"{_frontend_oauth_callback_url()}#{fragment}", status_code=302)
     response.delete_cookie("oauth_google_state")
     return response
+
+
+@router.post("/verify-email", response_model=VerifyEmailOtpOut)
+def verify_email(data: VerifyEmailOtpIn, db: Session = Depends(get_db)):
+    success, message = verify_email_otp(db, data.user_id, data.email, data.otp)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"success": True, "message": message}
+
+
+@router.post("/resend-email-otp")
+def resend_email_otp(data: ResendEmailOtpIn, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == data.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    pending_email = get_pending_email_verification(db, user.id)
+    if pending_email and pending_email != data.email:
+        raise HTTPException(status_code=400, detail="Email does not match pending verification")
+
+    success = send_verification_otp(db, user.id, data.email)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to send verification OTP")
+
+    return {"ok": True, "message": "Verification OTP sent to email"}

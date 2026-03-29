@@ -88,6 +88,8 @@ export const prerender = false;
       }
 
       const params = new URLSearchParams(window.location.search);
+      const requestedNext = params.get('next') || params.get('redirect') || '/';
+      const safeNext = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '/';
       if (params.get('session_expired') === '1') {
         errorEl.textContent = 'Session expired. Please login again.';
         errorEl.classList.remove('hidden');
@@ -109,7 +111,7 @@ export const prerender = false;
       const googleBtn = document.getElementById('google-login-btn') as HTMLButtonElement | null;
       if (googleBtn) {
         googleBtn.addEventListener('click', () => {
-          const next = params.get('next') || '/';
+          const next = safeNext;
           try {
             initiateGoogleAuth({ next });
           } catch (err: any) {
@@ -186,7 +188,7 @@ export const prerender = false;
             localStorage.setItem("awadhi_user_cache", JSON.stringify(user));
           }
 
-          window.location.href = "/";
+          window.location.href = safeNext;
         } catch (err: any) {
           console.error('[login] Error:', err);
           errorEl.textContent = err?.message || "Login failed";

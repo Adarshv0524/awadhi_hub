@@ -19,6 +19,7 @@
     meaning?: string | null;
   };
   export let chapterId: number | null = null;
+  export let mode: "default" | "chapter" = "default";
 
   const rendererMap: Record<string, typeof GenericPoetryRenderer> = {
     doha: DohaRenderer,
@@ -71,4 +72,4 @@
   });
 </script>
 
-<svelte:component this={Renderer} poetryNode={poetryNode} />
+<svelte:component this={Renderer} poetryNode={poetryNode} mode={mode} />

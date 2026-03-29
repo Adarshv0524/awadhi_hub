@@ -1,0 +1,130 @@
+---
+export const prerender = false;
+
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { api, ApiError } from "../../lib/api";
+import StructuredData from "../../components/StructuredData.astro";
+import NavigationControls from "../../components/navigation/NavigationControls.svelte";
+import VerseDetailCard from "../../components/content/poetry/VerseDetailCard.astro";
+
+const { id } = Astro.params;
+
+let detail: any = null;
+let error: string | null = null;
+
+try {
+  detail = await api(`/api/v1/poetry/${id}`);
+} catch (e) {
+  if (e instanceof ApiError && e.status === 404) {
+    return Astro.redirect("/404");
+  }
+  error = "Unable to load poetry entry right now.";
+}
+
+const node = detail?.current || null;
+const hierarchy = detail?.hierarchy || null;
+const previous = detail?.previous || null;
+const next = detail?.next || null;
+
+const heading = node?.main_text ? String(node.main_text).replace(/\s+/g, " ").trim() : `Poetry #${id}`;
+const seoTitle = heading.length > 72 ? `${heading.slice(0, 69).trimEnd()}...` : heading;
+const description = node?.meaning || `Poetry item ${id} from Awadhi chapter archive.`;
+const baseUrl = (import.meta.env.SITE || "https://awadhi.new").replace(/\/$/, "");
+const poetryUrl = `${baseUrl}/poetry/${id}`;
+
+const chapterHref = hierarchy
+  ? `/${encodeURIComponent(hierarchy.author.slug)}/${encodeURIComponent(hierarchy.work.slug)}/${encodeURIComponent(hierarchy.chapter.slug)}`
+  : "/authors";
+const poetryKeywords = [
+  "Awadhi poetry",
+  node?.poetry_type,
+  hierarchy?.author?.name,
+  hierarchy?.work?.title,
+  hierarchy?.chapter?.title,
+].filter(Boolean);
+---
+
+<BaseLayout
+  title={`${seoTitle} · Awadhi New`}
+  description={description}
+  canonicalURL={poetryUrl}
+  type="article"
+  lang="hi"
+  locale="hi_IN"
+  keywords={poetryKeywords}
+>
+  <head>
+    {node && (
+      <StructuredData
+        type="CreativeWork"
+        data={{
+          title: seoTitle,
+          text: node.main_text,
+          meaning: node.meaning,
+          datePublished: node.created_at,
+          dateModified: node.updated_at || node.created_at,
+          url: poetryUrl,
+          author: hierarchy?.author?.name,
+          work: hierarchy?.work?.title,
+          position: node.sequence_no,
+        }}
+      />
+    )}
+    {node && (
+      <StructuredData
+        type="BreadcrumbList"
+        data={{
+          items: [
+            { name: "Home", url: baseUrl },
+            { name: "Authors", url: `${baseUrl}/authors` },
+            { name: hierarchy?.author?.name || "Author", url: `${baseUrl}/${encodeURIComponent(hierarchy?.author?.slug || "")}` },
+            { name: hierarchy?.work?.title || "Work", url: `${baseUrl}/${encodeURIComponent(hierarchy?.author?.slug || "")}/${encodeURIComponent(hierarchy?.work?.slug || "")}` },
+            { name: hierarchy?.chapter?.title || "Chapter", url: `${baseUrl}${chapterHref}` },
+            { name: `Poetry #${node.sequence_no || id}`, url: poetryUrl },
+          ],
+        }}
+      />
+    )}
+  </head>
+
+  <div class="mx-auto max-w-4xl px-4 py-8">
+    {error && (
+      <div class="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>
+    )}
+
+    {!error && node && hierarchy && (
+      <article class="space-y-6">
+        <nav class="text-sm text-slate-400">
+          <a class="hover:text-cyan-300" href={`/${encodeURIComponent(hierarchy.author.slug)}`}>{hierarchy.author.name}</a>
+          <span class="mx-2">/</span>
+          <a class="hover:text-cyan-300" href={`/${encodeURIComponent(hierarchy.author.slug)}/${encodeURIComponent(hierarchy.work.slug)}`}>{hierarchy.work.title}</a>
+          <span class="mx-2">/</span>
+          <a class="hover:text-cyan-300" href={chapterHref}>{hierarchy.chapter.title}</a>
+          <span class="mx-2">/</span>
+          <span class="text-slate-200">#{node.sequence_no}</span>
+        </nav>
+
+        <NavigationControls
+          client:load
+          previousHref={previous ? `/poetry/${previous.id}` : undefined}
+          nextHref={next ? `/poetry/${next.id}` : undefined}
+          previousKind="Verse"
+          nextKind="Verse"
+          previousText={previous ? `${previous.poetry_type} #${previous.sequence_no}` : undefined}
+          nextText={next ? `${next.poetry_type} #${next.sequence_no}` : undefined}
+        />
+
+        <VerseDetailCard
+          node={node}
+          chapterId={hierarchy.chapter.id}
+          badgeLabel={node.poetry_type}
+          sequenceLabel={node.sequence_no}
+        />
+
+        <div class="flex justify-center">
+          <a class="text-sm text-slate-300 hover:text-slate-100" href={chapterHref}>Back to chapter</a>
+        </div>
+      </article>
+    )}
+  </div>
+</BaseLayout>

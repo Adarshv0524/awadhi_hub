@@ -13,6 +13,8 @@ type AnyRecord = Record<string, any>;
 
 const PAGE_SIZE = 200;
 const MAX_PAGES = 30;
+const POETRY_PAGE_SIZE = 200;
+const MAX_POETRY_PAGES_PER_CHAPTER = 20;
 
 function getArrayPayload(payload: unknown): AnyRecord[] {
   if (Array.isArray(payload)) return payload as AnyRecord[];
@@ -56,30 +58,13 @@ export const GET: APIRoute = async () => {
     [
       { loc: "/", lastmod: now, changefreq: "daily", priority: "1.0" },
       { loc: "/search", lastmod: now, changefreq: "daily", priority: "0.9" },
-      { loc: "/doha", lastmod: now, changefreq: "daily", priority: "0.9" },
+      { loc: "/poetry", lastmod: now, changefreq: "daily", priority: "0.9" },
       { loc: "/dictionary", lastmod: now, changefreq: "daily", priority: "0.9" },
       { loc: "/idioms", lastmod: now, changefreq: "daily", priority: "0.9" },
       { loc: "/articles", lastmod: now, changefreq: "daily", priority: "0.9" },
       { loc: "/authors", lastmod: now, changefreq: "weekly", priority: "0.8" },
       { loc: "/about", lastmod: now, changefreq: "monthly", priority: "0.6" },
     ].forEach(pushUrl);
-
-    // Dynamic content - Doha entries
-    try {
-      const dohaArray = await fetchPaginated((offset, limit) => `/content/doha?offset=${offset}&limit=${limit}&visibility=public`);
-      dohaArray.forEach((d: AnyRecord) => {
-        if (d.id && isPublicVisibility(d.visibility)) {
-          pushUrl({
-            loc: `/doha/${d.id}`,
-            lastmod: d.updated_at || d.created_at || now,
-            changefreq: "weekly",
-            priority: "0.8",
-          });
-        }
-      });
-    } catch (e) {
-      console.error("[Sitemap] Failed to fetch dohas:", e);
-    }
 
     // Dynamic content - Dictionary entries
     try {
@@ -178,6 +163,33 @@ export const GET: APIRoute = async () => {
                   changefreq: "weekly",
                   priority: "0.7",
                 });
+
+                // Include chapter poetry item pages so exact phrase matches are indexable.
+                const chapterId = Number(chapter?.id);
+                if (!Number.isFinite(chapterId) || chapterId <= 0) continue;
+
+                try {
+                  for (let page = 0; page < MAX_POETRY_PAGES_PER_CHAPTER; page += 1) {
+                    const offset = page * POETRY_PAGE_SIZE;
+                    const stream = await api(`/api/v1/poetry/chapters/${chapterId}/stream?offset=${offset}&limit=${POETRY_PAGE_SIZE}`);
+                    const items = Array.isArray((stream as AnyRecord)?.items) ? (stream as AnyRecord).items : [];
+                    if (items.length === 0) break;
+
+                    for (const item of items) {
+                      if (!item?.id) continue;
+                      pushUrl({
+                        loc: `/poetry/${item.id}`,
+                        lastmod: item.updated_at || chapter.updated_at || chapter.created_at || now,
+                        changefreq: "weekly",
+                        priority: "0.75",
+                      });
+                    }
+
+                    if (items.length < POETRY_PAGE_SIZE) break;
+                  }
+                } catch (e) {
+                  console.error(`[Sitemap] Failed to fetch poetry stream for chapter ${chapterId}:`, e);
+                }
               }
             } catch (e) {
               console.error(`[Sitemap] Failed to fetch chapters for ${authorSlug}/${workSlug}:`, e);

@@ -67,9 +67,11 @@
 
   let dohas: DohaItem[] = [];
   let poetry: PoetryItem[] = [];
+  let filteredPoetry: PoetryItem[] = [];
   let dictionary: DictionaryItem[] = [];
   let idioms: IdiomItem[] = [];
   let articles: ArticleItem[] = [];
+  let totalResults = 0;
 
   let loading = false;
   let hasSearched = false;
@@ -93,8 +95,13 @@
 
   const shouldFetch = (name: typeof sections[number]) => contentFilter === "all" || contentFilter === name;
 
-  const totalResults =
-    poetry.length + dohas.length + dictionary.length + idioms.length + articles.length;
+  $: filteredPoetry =
+    contentFilter === "all" && shouldFetch("doha")
+      ? poetry.filter((item) => String(item.poetry_type || "").toLowerCase() !== "doha")
+      : poetry;
+
+  $: totalResults =
+    filteredPoetry.length + dohas.length + dictionary.length + idioms.length + articles.length;
 
   function clearResults() {
     dohas = [];
@@ -166,7 +173,9 @@
     const jobs: Array<{ key: typeof sections[number]; path: string }> = [];
 
     if (shouldFetch("doha")) {
-      jobs.push({ key: "doha", path: `/search?${sharedParams.toString()}` });
+      const dohaParams = new URLSearchParams(sharedParams);
+      dohaParams.set("poetry_type", "doha");
+      jobs.push({ key: "doha", path: `/api/v1/poetry/search?${dohaParams.toString()}` });
     }
 
     if (shouldFetch("poetry")) {
@@ -402,17 +411,23 @@
         {/if}
       </div>
 
-      {#if shouldFetch("poetry") && poetry.length > 0}
+      {#if shouldFetch("poetry") && filteredPoetry.length > 0}
         <section class="surface-shell p-4 md:p-5">
-          <h2 class="mb-3 text-2xl">Poetry Forms ({poetry.length})</h2>
+          <h2 class="mb-3 text-2xl">Poetry Forms ({filteredPoetry.length})</h2>
           <div class="space-y-3">
-            {#each poetry as item}
+            {#each filteredPoetry as item}
               <ContentCard>
-                <a href={`/${item.chapter_path}`} class="mb-2 block text-lg font-semibold hover:underline">{item.main_text}</a>
+                <a href={`/poetry/${item.id}`} class="mb-2 block text-lg font-semibold hover:underline">{item.main_text}</a>
                 <div class="mb-2 flex flex-wrap gap-2">
                   <Badge tone="positive">{item.poetry_type}</Badge>
                   <Badge>Sequence {item.sequence_no}</Badge>
                 </div>
+                <p class="mb-2 text-xs text-slate-400">
+                  Chapter context:
+                  <a class="ml-1 underline hover:text-cyan-300" href={`/${item.chapter_path}`}>
+                    open chapter view
+                  </a>
+                </p>
                 {#if item.meaning}
                   <p class="text-sm text-muted">{item.meaning}</p>
                 {/if}
@@ -428,7 +443,7 @@
           <div class="space-y-3">
             {#each dohas as item}
               <ContentCard>
-                <a href={`/doha/${item.id}`} class="mb-2 block text-lg font-semibold hover:underline">{item.main_text}</a>
+                <a href={`/poetry/${item.id}`} class="mb-2 block text-lg font-semibold hover:underline">{item.main_text}</a>
                 {#if item.meaning}
                   <p class="text-sm text-muted">{item.meaning}</p>
                 {/if}

@@ -9,6 +9,7 @@
     import.meta.env.PUBLIC_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : "");
 
   export let minimal = false; // if true render only role (used in footer)
+  export let mobile = false;
 
   export let user: any = null;
   let loading = true;
@@ -67,7 +68,7 @@
 
   function displayName(u: any) {
     if (!u) return "";
-    return u.username || u.email || "Me";
+    return u.name || u.username || u.email || "Me";
   }
 
   // toggle dropdown
@@ -75,10 +76,20 @@
     dropdownOpen = !dropdownOpen;
   }
 
+  function closeDropdown() {
+    dropdownOpen = false;
+  }
+
   // close on outside click
   function onDocumentClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
     if (!target.closest(".auth-status-root")) {
+      dropdownOpen = false;
+    }
+  }
+
+  function onDocumentKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") {
       dropdownOpen = false;
     }
   }
@@ -96,10 +107,12 @@
     syncFromStore();
     ensureAuthLoaded();
     document.addEventListener("click", onDocumentClick);
+    document.addEventListener("keydown", onDocumentKeydown);
 
     return () => {
       unsubscribe();
       document.removeEventListener("click", onDocumentClick);
+      document.removeEventListener("keydown", onDocumentKeydown);
     };
   });
 </script>
@@ -108,6 +121,21 @@
   /* small local styles; tailwind exists but keep fallback */
   .username-btn { cursor: pointer; }
   .dropdown { min-width: 220px; }
+  .mobile-auth-root {
+    width: 100%;
+  }
+
+  .mobile-auth-root .username-btn {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .mobile-auth-root .dropdown {
+    min-width: 0;
+    width: 100%;
+  }
 </style>
 
 {#if loading}
@@ -119,9 +147,11 @@
     {#if minimal}
       <span></span>
     {:else}
-      <div class="flex items-center gap-3 auth-status-root">
-        <a href="/login" class="site-nav-link">Login</a>
-        <a href="/register" class="site-nav-link">Register</a>
+      <div class={`auth-status-root ${mobile ? "mobile-auth-root" : "flex items-center gap-3"}`}>
+        <div class={mobile ? "grid grid-cols-2 gap-2" : "flex items-center gap-3"}>
+          <a href="/login" class="site-nav-link text-center">Login</a>
+          <a href="/register" class="site-nav-link text-center">Register</a>
+        </div>
       </div>
     {/if}
   {:else}
@@ -132,29 +162,29 @@
         {user.role ? user.role.toUpperCase() : "USER"}
       </div>
     {:else}
-      <div class="flex items-center gap-4 auth-status-root relative z-layer-dropdown">
+      <div class={`auth-status-root relative z-layer-dropdown ${mobile ? "mobile-auth-root" : "flex items-center gap-4"}`}>
         <!-- username dropdown -->
-        <div class="relative">
-          <button class="username-btn text-sm site-nav-link" on:click={toggleDropdown} aria-haspopup="true" aria-expanded={dropdownOpen}>
+        <div class={`relative ${mobile ? "w-full" : ""}`}>
+          <button class="username-btn text-sm site-nav-link" on:click={toggleDropdown} aria-haspopup="true" aria-expanded={dropdownOpen} aria-controls="auth-user-menu">
             {displayName(user)}
             <span class="ml-2">▾</span>
           </button>
 
           {#if dropdownOpen}
-            <div class="absolute right-0 mt-2 auth-dropdown dropdown p-2">
+            <div id="auth-user-menu" class={`auth-dropdown dropdown p-2 ${mobile ? "mt-2" : "absolute right-0 mt-2"}`}>
               <div class="text-sm text-fg mb-2">
                 <strong>{displayName(user)}</strong><br />
                 <span class="text-xs text-muted">{user.role || "user"}</span>
               </div>
 
               <div class="flex flex-col gap-2">
-                <a class="auth-menu-link" href="/dashboard">Dashboard</a>
-                <a class="auth-menu-link" href="/me/edit">Edit profile</a>
+                <a class="auth-menu-link" href="/dashboard" on:click={closeDropdown}>Dashboard</a>
+                <a class="auth-menu-link" href="/me/edit" on:click={closeDropdown}>Edit profile</a>
                 {#if showRoleLinks}
                   <div class="border-t border-slate-700/60 my-1"></div>
                   <div class="text-xs text-muted uppercase tracking-wide px-2">Manage</div>
                   {#each roleLinks as link}
-                    <a class="auth-menu-link" href={link.href}>{link.label}</a>
+                    <a class="auth-menu-link" href={link.href} on:click={closeDropdown}>{link.label}</a>
                   {/each}
                 {/if}
                 <button on:click={logout} class="auth-menu-link danger text-left">Sign out</button>
