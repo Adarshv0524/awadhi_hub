@@ -216,3 +216,50 @@ def test_batch_fails_if_missing_submission(client, db):
     # s1 should still be pending_review
     s1_db = db.query(Submission).get(s1.id)
     assert s1_db.status == "pending_review"
+
+
+def test_moderator_can_list_user_reports(client, db):
+    reporter = create_user(db, "reporter@example.com", Role.REGISTERED, "reporter")
+    moderator = create_user(db, "mod-reports@example.com", Role.MODERATOR, "mod-reports")
+
+    reporter_token = create_access_token(reporter.id)
+    moderator_token = create_access_token(moderator.id)
+
+    create_report = client.post(
+        "/interactions/report",
+        headers={"Authorization": f"Bearer {reporter_token}"},
+        json={
+            "content_type": "dictionary",
+            "content_id": 778899,
+            "reason": "spam",
+            "note": "This entry seems promotional",
+        },
+    )
+    assert create_report.status_code == 200
+
+    reports = client.get(
+        "/moderation/reports?status=open&content_type=dictionary",
+        headers={"Authorization": f"Bearer {moderator_token}"},
+    )
+    assert reports.status_code == 200
+    body = reports.json()
+
+    assert body["total_count"] >= 1
+    assert body["count"] >= 1
+    assert any(
+        r["user_id"] == reporter.id
+        and r["content_type"] == "dictionary"
+        and r["reason"] == "spam"
+        for r in body["results"]
+    )
+
+
+def test_non_moderator_cannot_list_reports(client, db):
+    user = create_user(db, "normal-user@example.com", Role.REGISTERED, "normal-user")
+    token = create_access_token(user.id)
+
+    denied = client.get(
+        "/moderation/reports",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert denied.status_code == 403

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { API_BASE } from "../../lib/api";
+  import { api } from "../../lib/api";
 
   export let content_type: string;
   export let content_id: number;
@@ -18,17 +18,10 @@
   }
 
   async function fetchRecommendations(signal: AbortSignal): Promise<any[]> {
-    const response = await fetch(`${API_BASE}/recommendations/${content_type}/${content_id}?limit=${limit}`, {
+    return api(`/recommendations/${content_type}/${content_id}?limit=${limit}`, {
       method: "GET",
-      credentials: "include",
       signal,
     });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    return response.json();
   }
 
   onMount(() => {
@@ -122,16 +115,16 @@
     if (!id) return "";
     
     // Map content types to routes
+    const poetryTypes = new Set(["poetry", "poetry_node", "doha", "chaupai", "sorath", "jhulana", "savaiya", "ghanakshari", "chappay", "other_poetry"]);
     const typeMap: Record<string, string> = {
-      doha: "doha",
-      dohas: "doha",
       dictionary: "dictionary",
       idiom: "idioms",
       idioms: "idioms",
       article: "articles",
       articles: "articles",
     };
-    
+
+    if (poetryTypes.has(type)) return `/poetry/${id}`;
     const route = typeMap[type];
     return route ? `/${route}/${id}` : "";
   }
@@ -148,7 +141,8 @@
 
   function getHeading(): string {
     const headings: Record<string, string> = {
-      doha: "Related Dohas",
+      doha: "Related Poetry",
+      poetry: "Related Poetry",
       dictionary: "Related Words",
       idiom: "Related Idioms",
       article: "Related Articles",
@@ -159,6 +153,7 @@
   function getSubtitle(): string {
     const subtitles: Record<string, string> = {
       doha: "Continue reading across adjacent verse and themes.",
+      poetry: "Continue reading across adjacent verse and themes.",
       dictionary: "Expand your vocabulary with connected lexical entries.",
       idiom: "Explore neighboring idioms and proverb usage.",
       article: "Discover adjacent long-form articles and references.",

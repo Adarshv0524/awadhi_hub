@@ -17,5 +17,5 @@ export type AdminSloSummary = {
 };
 
 export async function fetchAdminSloSummary(windowMinutes = 60): Promise<AdminSloSummary> {
-  return api<AdminSloSummary>(`/api/v1/telemetry/admin-observability/slo?window_minutes=${windowMinutes}`);
+  return api<AdminSloSummary>(`/telemetry/admin-observability/slo?window_minutes=${windowMinutes}`);
 }

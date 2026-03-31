@@ -19,6 +19,21 @@ def _create_admin(db, email: str = "analytics_admin@example.com"):
     return admin
 
 
+def _create_registered_user(db, email: str = "analytics_user@example.com"):
+    user = User(
+        email=email,
+        username=email.split("@")[0],
+        password_hash=hash_password("Pass123!"),
+        role="registered",
+        is_active=True,
+        is_banned=False,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 def test_analytics_summary_endpoint_exists(client, db):
     admin = _create_admin(db, "analytics_admin_summary@example.com")
     token = create_access_token(admin.id)
@@ -65,23 +80,28 @@ def test_admin_analytics_alias_endpoints_exist(client, db):
     r_summary = client.get("/admin/analytics/summary", headers=headers)
     assert r_summary.status_code == 200
 
+    r_summary_insights = client.get("/admin/analytics/insights?view=summary", headers=headers)
+    assert r_summary_insights.status_code == 200
+    assert "data" in r_summary_insights.json()
+
+    # Backward-compatibility aliases are still supported at runtime.
     r_summary_v2 = client.get("/admin/analytics/v2/summary", headers=headers)
     assert r_summary_v2.status_code == 200
 
-    r_growth_v2 = client.get("/admin/analytics/v2/growth", headers=headers)
-    assert r_growth_v2.status_code == 200
-    growth_v2 = r_growth_v2.json()
-    assert isinstance(growth_v2, dict)
-    assert "dates" in growth_v2
-    assert "series" in growth_v2
+    r_growth = client.get("/admin/analytics/insights?view=growth", headers=headers)
+    assert r_growth.status_code == 200
+    growth = r_growth.json()["data"]
+    assert isinstance(growth, dict)
+    assert "dates" in growth
+    assert "series" in growth
 
-    r_top_v2 = client.get("/admin/analytics/v2/top", headers=headers)
-    assert r_top_v2.status_code == 200
-    assert isinstance(r_top_v2.json(), list)
+    r_top = client.get("/admin/analytics/insights?view=top", headers=headers)
+    assert r_top.status_code == 200
+    assert isinstance(r_top.json()["data"], list)
 
-    r_demand_v2 = client.get("/admin/analytics/v2/demand", headers=headers)
-    assert r_demand_v2.status_code == 200
-    assert isinstance(r_demand_v2.json(), dict)
+    r_demand = client.get("/admin/analytics/insights?view=demand", headers=headers)
+    assert r_demand.status_code == 200
+    assert isinstance(r_demand.json()["data"], dict)
 
     persist_admin_telemetry_event(
         db,
@@ -121,21 +141,21 @@ def test_admin_analytics_alias_endpoints_exist(client, db):
         ),
     )
 
-    r_throughput = client.get("/admin/analytics/v2/action-throughput", headers=headers)
+    r_throughput = client.get("/admin/analytics/insights?view=action-throughput", headers=headers)
     assert r_throughput.status_code == 200
-    assert isinstance(r_throughput.json(), list)
+    assert isinstance(r_throughput.json()["data"], list)
 
-    r_cycle = client.get("/admin/analytics/v2/moderation-cycle-time", headers=headers)
+    r_cycle = client.get("/admin/analytics/insights?view=moderation-cycle-time", headers=headers)
     assert r_cycle.status_code == 200
-    assert "p95_ms" in r_cycle.json()
+    assert "p95_ms" in r_cycle.json()["data"]
 
-    r_denials = client.get("/admin/analytics/v2/rbac-denials", headers=headers)
+    r_denials = client.get("/admin/analytics/insights?view=rbac-denials", headers=headers)
     assert r_denials.status_code == 200
-    assert isinstance(r_denials.json(), list)
+    assert isinstance(r_denials.json()["data"], list)
 
-    r_events = client.get("/admin/analytics/v2/events?module=users", headers=headers)
+    r_events = client.get("/admin/analytics/insights?view=events&module=users", headers=headers)
     assert r_events.status_code == 200
-    assert isinstance(r_events.json(), list)
+    assert isinstance(r_events.json()["data"], list)
 
     # Deprecated analytics endpoints must be removed from backend contract.
     for removed_path in [
@@ -147,3 +167,64 @@ def test_admin_analytics_alias_endpoints_exist(client, db):
     ]:
         removed = client.get(removed_path, headers=headers)
         assert removed.status_code == 404
+
+
+def test_engagement_summary_reflects_like_bookmark_share(client, db):
+    admin = _create_admin(db, "analytics_admin_engagement@example.com")
+    token = create_access_token(admin.id)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Trigger interaction KPIs directly through public interaction APIs.
+    like_resp = client.post(
+        "/interactions/toggle",
+        headers=headers,
+        json={"content_type": "doha", "content_id": 999001, "interaction": "like"},
+    )
+    assert like_resp.status_code == 200
+
+    bookmark_resp = client.post(
+        "/interactions/toggle",
+        headers=headers,
+        json={"content_type": "doha", "content_id": 999001, "interaction": "bookmark"},
+    )
+    assert bookmark_resp.status_code == 200
+
+    share_resp = client.post(
+        "/interactions/share",
+        headers=headers,
+        json={"content_type": "doha", "content_id": 999001, "metadata": {"channel": "copy"}},
+    )
+    assert share_resp.status_code == 200
+
+    summary_resp = client.get("/admin/analytics/insights?view=engagement-summary", headers=headers)
+    assert summary_resp.status_code == 200
+    summary = summary_resp.json()["data"]
+
+    assert summary["total_likes"] >= 1
+    assert summary["total_bookmarks"] >= 1
+    assert summary["total_shares"] >= 1
+    assert summary["active_content"] >= 1
+
+
+def test_normal_user_master_interactions_reflect_in_admin_summary(client, db):
+    admin = _create_admin(db, "analytics_admin_master@example.com")
+    normal_user = _create_registered_user(db, "analytics_normal_master@example.com")
+
+    admin_headers = {"Authorization": f"Bearer {create_access_token(admin.id)}"}
+    user_headers = {"Authorization": f"Bearer {create_access_token(normal_user.id)}"}
+
+    for payload in [
+        {"action": "toggle", "content_type": "chaupai", "content_id": 991100, "interaction": "like"},
+        {"action": "toggle", "content_type": "chaupai", "content_id": 991100, "interaction": "bookmark"},
+        {"action": "share", "content_type": "chaupai", "content_id": 991100, "metadata": {"channel": "copy"}},
+    ]:
+        resp = client.post("/interactions/master", headers=user_headers, json=payload)
+        assert resp.status_code == 200
+
+    summary_resp = client.get("/admin/analytics/insights?view=engagement-summary", headers=admin_headers)
+    assert summary_resp.status_code == 200
+    summary = summary_resp.json()["data"]
+
+    assert summary["total_likes"] >= 1
+    assert summary["total_bookmarks"] >= 1
+    assert summary["total_shares"] >= 1

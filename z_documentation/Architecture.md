@@ -1,323 +1,172 @@
-# Awadhi Hub Architecture
+# Awadhi New Content Architecture
 
-Last updated: March 28, 2026  
-Status: Verified against implementation  
-Scope: Hierarchical Poetry Expansion plus Sitewide UI Overhaul
+Last updated: March 31, 2026  
+Scope: Author to Work to Chapter to Content node delivery, pointer logic, and chapter page behavior
 
-## 0) Purpose and Audience
+## 1. System Map
 
-This document is the canonical technical map for Awadhi Hub. It is written for:
+Awadhi New currently runs two parallel canonical content lines:
 
-1. Backend engineers designing schema, API, and service behavior.
-2. Frontend engineers implementing rendering, interaction, and accessibility patterns.
-3. QA engineers validating cross-layer contracts.
-4. Technical writers and maintainers synchronizing public and internal documentation.
+1. Legacy canonical doha line via doha_entries.
+2. Polymorphic chapter line via poetry_nodes.
 
-When this document and code disagree, code is the current runtime truth and this document must be updated in the same change window.
-
-## 0.1 Architecture Principles
-
-Awadhi Hub implementation follows these principles:
-
-1. Hierarchy first: author -> work -> chapter anchors all literary context.
-2. Deterministic sequencing: chapter_id plus sequence_no is the poetry navigation source of truth.
-3. Domain separation: poetry expansion does not collapse dictionary, idiom, or article into one schema.
-4. Progressive rendering: unknown poetry types must still render safely.
-5. Contract stability: API schema changes must be explicit, versioned, and tested.
-6. Documentation parity: architectural claims are valid only when verifiable in source.
-
-## 1) System Map
-
-Awadhi Hub is implemented as a dual-domain platform:
-
-1. Poetry domain: chapter-sequenced, polymorphic literary nodes backed by poetry_nodes.
-2. Knowledge domain: dictionary, idiom, and article modules preserved as separate canonical entities.
-
-This is an intentional architecture boundary. Poetry expansion and navigation are unified. Knowledge modules remain isolated by schema and workflow.
-
-## 1.1 Runtime Topology
-
-1. Frontend application: Astro pages with Svelte interactive islands.
-2. API layer: FastAPI route modules grouped by domain.
-3. Service layer: business logic for search, moderation, poetry navigation, and content operations.
-4. Data access layer: SQLAlchemy ORM models plus Alembic migrations.
-5. Storage: MySQL relational schema with JSON fields for bounded flexible metadata.
-
-## 1.2 Layer Ownership
-
-1. Route handlers validate input/output contracts and authorization.
-2. Services enforce ordering, domain rules, and side effects.
-3. ORM entities define persistence shape and cross-entity relationships.
-4. Migrations are the authoritative historical schema evolution log.
-
-No business rule should be enforced only in UI.
-
-## 2) Data Layer
-
-### 2.1 Canonical hierarchy
-
-All chapter-bound literary navigation depends on:
+Both are hierarchy-linked using the same parent entities:
 
 1. classical_authors
 2. classical_works
 3. work_chapters
 
-This graph is the source of route context and ordering scope.
+## 2. Hierarchical Mapping
+
+### 2.1 Entity Chain
+
+Author to Work to Chapter to Node is implemented through foreign keys.
+
+1. classical_works.author_id -> classical_authors.id
+2. work_chapters.work_id -> classical_works.id
+3. poetry_nodes.chapter_id -> work_chapters.id
+4. poetry_nodes.work_id and poetry_nodes.author_id kept for direct filtering and denormalized safety
+
+Legacy path form is still present on doha_entries.hierarchy_path and has the shape:
+
+author_slug/work_slug/chapter_slug/number_in_chapter
+
+### 2.2 Runtime Read Paths
+
+1. /authors, /authors/{author}/works, /authors/{author}/works/{work}/chapters provide parent hierarchy browsing.
+2. /{author}/{work}/{chapter} renders chapter stream from poetry_nodes.
+3. /poetry/{id} renders one node detail with previous or next summary.
+4. /content/doha/{id}/navigation is still used by legacy doha flow.
+
+## 3. Architecture Diagram (ASCII)
+
+```text
+						+-------------------+
+						|  classical_authors|
+						| id, slug, name    |
+						+---------+---------+
+								  |
+								  | 1:N
+								  v
+						+-------------------+
+						|  classical_works  |
+						| id, author_id,    |
+						| slug, title       |
+						+---------+---------+
+								  |
+								  | 1:N
+								  v
+						+-------------------+
+						|   work_chapters   |
+						| id, work_id,      |
+						| slug, number      |
+						+---------+---------+
+								  |
+					+-------------+-------------+
+					|                           |
+					| 1:N                       | 1:N (legacy)
+					v                           v
+		 +-------------------------+   +-----------------------+
+		 |      poetry_nodes       |   |      doha_entries     |
+		 | id, chapter_id,         |   | id, chapter_id,       |
+		 | poetry_type, sequence_no|   | number_in_chapter,    |
+		 | main_text, meaning      |   | hierarchy_path        |
+		 +------------+------------+   +-----------------------+
+					  |
+					  | previous/next resolved by
+					  | nearest sequence_no in same chapter
+					  v
+		 +-------------------------+
+		 |   /api/v1/poetry/nav    |
+		 | current, previous, next |
+		 +-------------------------+
+```
 
-### 2.2 Polymorphic poetry model
+## 4. Linked-List Logic (Previous and Next)
 
-Poetry is implemented in poetry_nodes with a value discriminator:
+There is no stored pointer column today.  
+Pointer behavior is computed at query time using ordered neighbors.
 
-1. poetry_type identifies the form, including doha, chaupai, jhulana, sorath, savaiya, ghanakshari, chappay, and other_poetry.
-2. sequence_no provides deterministic order inside each chapter.
-3. UniqueConstraint(chapter_id, sequence_no) enforces one sequence slot per chapter.
-4. poetry_type_registry provides active form metadata for UI discovery.
+### 4.1 Implemented Resolver
 
-Important note: the discriminator is column-based, not SQLAlchemy class polymorphism. Form-specific schema differences are modeled through shared fields plus prosody_metadata JSON.
+In poetry service, next and previous are selected as:
 
-## 2.2.1 Poetry node canonical fields
+1. Previous: max sequence_no smaller than current in same chapter.
+2. Next: min sequence_no greater than current in same chapter.
+3. Tie-breaker: id ordering.
 
-Core fields carry these responsibilities:
+This is functionally equivalent to an implicit doubly linked list over sequence_no.
 
-1. author_id, work_id, chapter_id: hierarchy linkage and route context.
-2. poetry_type: presentation and filter classification.
-3. sequence_no: deterministic chapter order.
-4. main_text: canonical display payload.
-5. text_devanagari, text_romanized: script and transliteration support.
-6. meaning: optional interpretive context.
-7. prosody_metadata: optional meter/form metadata.
-8. status, visibility, is_deleted: publication and lifecycle controls.
+### 4.2 Example Validation Requirement (Hanuman Chalisa)
 
-## 2.2.2 Registry model behavior
+Expected chapter-local chain should satisfy:
 
-poetry_type_registry supports:
+1. Jai Hanuman ... -> Ram dut atulit ... -> Mahavir vikram ...
+2. For Ram dut atulit ...:
+previous should be Jai Hanuman ...
+next should be Mahavir vikram ...
 
-1. Human-readable display_name.
-2. Family classification for grouping.
-3. Active toggle without code deploy.
-4. Optional renderer hints for future dispatch automation.
+Audit result:
 
-### 2.3 Migration posture
+1. Algorithm supports this correctly if sequence numbers are correct.
+2. Repository test fixtures currently use synthetic lines such as Doha One and Doha Two.
+3. A production-like fixture for these exact Hanuman Chalisa lines is missing and should be added.
 
-Migration 0016_poetry_nodes_foundation is active and performs:
+## 5. Polymorphic Chapter Presentation
 
-1. Table creation for poetry_nodes and poetry_type_registry.
-2. Canonical doha backfill into poetry_nodes.
-3. Poetry type seed insertion, including other_poetry.
+Chapter page uses a dispatcher that maps poetry_type to renderer:
 
-## 2.3.1 Data migration guarantees
+1. doha -> DohaRenderer
+2. chaupai -> ChaupaiRenderer
+3. jhulana -> JhulanaRenderer
+4. unknown type -> GenericPoetryRenderer plus telemetry event
 
-Migration and backfill guarantees:
+This supports mixed forms in one chapter stream while preserving sequence order.
 
-1. Canonical doha entries migrate into poetry_nodes with poetry_type=doha.
-2. Sequence assignment is chapter-local and deterministic.
-3. Backfill verifies expected count parity and fails closed on mismatch.
-4. Source lineage metadata remains available for moderation/audit traceability.
+### 5.1 Chapter Page Flow
 
-### 2.4 Knowledge modules remain independent
+1. Resolve chapter_id from slug chain.
+2. Fetch /api/v1/poetry/chapters/{chapter_id}/stream for initial batch.
+3. Render each node by poetry_type via dispatcher.
+4. Load more appends stream chunk.
+5. Optional nav endpoint refines previous or next metadata for current position.
 
-The following modules are not merged into poetry_nodes:
+## 6. Current Schema And Logic Gaps
 
-1. dictionary_entries
-2. idiom_entries
-3. article_entries
+### 6.1 Pointer Representation Gap
 
-Reason: these are semantic knowledge resources, not chapter-sequenced poetic units.
+There are no explicit prev_node_id or next_node_id columns.  
+Computed pointers are correct for ordering but cannot represent editorial jumps.
 
-## 2.5 Data integrity and indexing
+### 6.2 Dual Canonical Sources
 
-Expected database integrity controls:
+doha_entries and poetry_nodes both represent canonical doha-adjacent content.  
+This increases migration and contract complexity across APIs and docs.
 
-1. Unique constraint on chapter_id and sequence_no.
-2. Supporting indexes on chapter sequence, work/chapter, and poetry_type.
-3. Foreign keys from poetry_nodes to hierarchy entities.
-4. Optional source_submission_id uniqueness for canonicalization mapping.
+### 6.3 Performance Hotspot
 
-Expected query shape:
+Chapter stream serialization currently resolves engagement rows per node, producing N+1 behavior.
 
-1. Chapter streams: indexed chapter + sequence scan.
-2. Navigation: chapter-filtered nearest sequence lookup.
-3. Search: filtered text matching with bounded limit and offset.
+## 7. Chapter Page Contract
 
-## 3) Service and API Layer
+Minimum chapter payload needed by frontend reader:
 
-### 3.1 Poetry navigation contract
+1. hierarchy.author, hierarchy.work, hierarchy.chapter
+2. items[].id
+3. items[].poetry_type
+4. items[].sequence_no
+5. items[].main_text
+6. items[].meaning
 
-Poetry navigation is implemented using chapter_id plus sequence_no as the single canonical resolver.
+Current implementation meets this contract and degrades safely to empty chapter state.
 
-Primary endpoints:
+## 8. Recommended Next Architecture Steps
 
-1. GET /api/v1/poetry/chapters/{chapter_id}/stream
-2. GET /api/v1/poetry/chapters/{chapter_id}/nav?sequence_no={n}
-3. GET /api/v1/poetry/{poetry_node_id}
-4. GET /api/v1/poetry/types
-5. GET /api/v1/poetry/search
-
-Frontend detail routes:
-
-1. GET /poetry/{id} for per-poetry-node detail pages across doha and non-doha poetry forms.
-2. Chapter entries in /{author}/{work}/{chapter} deep-link to /poetry/{id}.
-
-Navigation behavior:
-
-1. Locate current node by exact chapter and sequence.
-2. Resolve previous and next by nearest lower and higher sequence in chapter scope.
-3. Return hierarchy context (author, work, chapter) with current and nav summaries.
-
-## 3.1.1 API contract notes
-
-1. chapter stream endpoint returns hierarchy context plus paginated items.
-2. nav endpoint returns current plus optional previous and next summaries.
-3. detail endpoint returns current node contract for direct linking.
-4. types endpoint returns active poetry type metadata for UI controls.
-5. search endpoint supports author/work/chapter filtering and optional poetry_type narrowing.
-
-### 3.2 Search fan-out model
-
-The frontend search experience selectively fans out to:
-
-1. doha search
-2. poetry search
-3. dictionary
-4. idiom
-5. article
-
-Fan-out is conditional on active filter state, not unconditional multi-request spam.
-
-## 3.2.1 Search request lifecycle
-
-1. Build shared query parameters from user input.
-2. Spawn domain-specific requests only for eligible filters.
-3. Resolve all requests with per-section failure isolation.
-4. In all-content mode, poetry section suppresses poetry_type=doha rows to avoid duplicate rendering with the dedicated doha section.
-
-## 3.2.2 Article discovery flow
-
-Article discovery surfaces are now built around explicit discovery endpoints.
-
-1. Tag browser consumes GET /articles/tags/list and routes to tag pages backed by GET /articles/by-tag/{tag}.
-2. Recent article widgets consume GET /articles/recent/list.
-3. Freshness and distribution indicators consume GET /articles/stats.
-4. GET /articles/search/advanced remains deprecated until a dedicated advanced search UI is introduced.
-4. Render available sections even when one section fails.
-
-This behavior avoids full-page failure due to one downstream endpoint error.
-
-### 3.3 Submission and moderation data consistency
-
-Idiom submission payloads require romanized text in metadata for both create and edit flows.
-Backend idiom validation enforces external_references.text_roman parity across lifecycle updates.
-
-## 3.3.1 Moderation and canonicalization flow
-
-1. User submits draft payload with content-specific metadata.
-2. Moderation queue validates and reviews submission.
-3. Approved submissions materialize into canonical module entities.
-4. For poetry submissions, canonical data is represented in poetry_nodes and surfaced through chapter stream APIs.
-
-## 3.4 Security and policy boundaries
-
-1. Auth-protected write endpoints require valid user identity.
-2. Role checks gate moderator/admin actions.
-3. Visibility and status filters prevent accidental exposure of non-public content.
-4. Rate limiting and bounded pagination reduce abuse surface for search-heavy routes.
-
-Admin authorization boundary and telemetry:
-
-1. Admin pages use a single guard boundary at the admin layout level; page-level duplicate guards are disallowed.
-2. Guard decisions (allow, deny, error) emit centralized policy telemetry to POST /api/v1/telemetry/auth-policy.
-3. Deny reasons are normalized (missing_token, missing_api_base, me_request_failed, insufficient_role, guard_exception) for consistent observability.
-4. Backend RBAC remains authoritative for all admin endpoints even when client guard is bypassed.
-
-SSR/CSR strategy:
-
-1. Current runtime uses CSR guard verification against /auth/me because browser token is stored in localStorage.
-2. For server-verified route gating, move auth to httpOnly cookie/session-backed strategy so Astro SSR can validate before render.
-3. Until cookie migration is complete, layout-level CSR guard plus backend RBAC is the canonical strategy.
-
-## 3.5 Analytics and monitoring integration
-
-Dark analytics APIs are now integrated across user-facing and admin surfaces.
-
-1. Live leaderboard connects to WS /analytics/ws/leaderboard for push updates.
-2. Leaderboard automatically degrades to polling GET /analytics/leaderboard every 30 seconds when WS is unavailable.
-3. Admin analytics dashboard consumes GET /analytics/growth with a time-series chart component.
-4. Admin demand panel consumes GET /analytics/demand for search distribution visibility.
-5. Global KPI cards consume GET /analytics/summary on admin and moderation landing screens.
-
-## 3.5.1 Baseline uptime monitoring
-
-1. Health endpoint is monitored at 60-second intervals through backend/scripts/health_monitor.mjs.
-2. Monitor targets GET /health and logs success, non-2xx responses, and network failures.
-3. Interval, timeout, and target URL are configurable through HEALTH_INTERVAL_MS, HEALTH_TIMEOUT_MS, and HEALTH_URL.
-
-## 4) Presentation Layer
-
-### 4.1 Sitewide design system
-
-The UI overhaul is live with shared primitives and tokens:
-
-1. Global style tokens are centralized in frontend/src/styles/global.css.
-2. Reusable primitives are in frontend/src/components/ui (Button, Badge, ContentCard).
-3. Shared motion, surface, spacing, and typography rules are applied across search and content pages.
-
-## 4.1.1 Design token intent
-
-Global tokens centralize:
-
-1. Color roles (background, surface, foreground, accent, semantic cues).
-2. Spacing scale for layout consistency.
-3. Radius and shadow system for visual hierarchy.
-4. Typographic families for brand-consistent reading experience.
-
-Component authors should consume tokens instead of introducing one-off values.
-
-### 4.2 Poetry renderer dispatcher
-
-Poetry rendering uses a dispatcher component:
-
-1. Normalize poetry_type.
-2. Select specialized renderer when mapped.
-3. Fall back to GenericPoetryRenderer for unmapped forms.
-4. Forward rendering mode to specialized renderers so chapter pages can render continuous chapter typography while detail pages retain card-style presentation.
-
-This enables immediate rendering for newly approved forms before dedicated visual treatment is shipped.
-
-## 4.2.1 Renderer strategy
-
-1. Specialized renderers exist for priority forms.
-2. Generic renderer protects delivery continuity for new or rare forms.
-3. Renderer map updates are additive and do not require route rewrites.
-4. Unknown types should never hard-fail user reading flow.
-
-## 4.2.2 Observability and telemetry
-
-Fallback rendering emits a structured telemetry event to make unmapped poetry types measurable.
-
-Event contract:
-
-1. event_name: fallback_renderer_used
-2. poetry_type: unresolved poetry type that triggered GenericPoetryRenderer
-3. chapter_id: chapter context when available
-4. sequence_no: chapter-local sequence number of the rendered item
-
-Runtime behavior:
-
-1. Development mode logs the payload through console.warn for local diagnostics.
-2. Production mode sends a non-blocking POST request to /api/v1/telemetry/renderer-fallback.
-3. Telemetry emission is best-effort and never blocks content rendering.
-
-## 4.2.3 Other category for unknown poetry
-
-The other_poetry type supports bounded rich media through prosody_metadata.
-
-Allowed payload contract:
-
-1. prosody_metadata.media.type: image or audio.
-2. prosody_metadata.media.url: non-empty URL string.
-3. prosody_metadata.media.alt_text: required for image, optional for audio.
-
-Reference shape:
+1. Add canonical fixture tests for Hanuman Chalisa sequence examples.
+2. Decide on long-term canonical source strategy between doha_entries and poetry_nodes.
+3. Add optional explicit pointer columns for editorially non-linear chapter navigation.
+4. Remove N+1 engagement aggregation in chapter stream path with batched joins.
+5. Keep chapter page keyboard navigation scoped to focused reader container only.
 
 1. {
 2.   "media": {

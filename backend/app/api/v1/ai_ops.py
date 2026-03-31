@@ -20,8 +20,8 @@ from app.services.model_governance_service import (
 from app.services.privacy_service import redact_pii
 
 
-router = APIRouter(prefix="/api/v1/ai", tags=["ai-ops"])
-governance_router = APIRouter(prefix="/api/v1/governance", tags=["governance"])
+router = APIRouter(prefix="/ai", tags=["ai-ops"])
+governance_router = APIRouter(prefix="/governance", tags=["governance"])
 
 
 class SettingsRiskIn(BaseModel):

@@ -38,6 +38,7 @@ from app.auth.jwt import decode_token
 from app.db.models import User
 from app.db.session import SessionLocal, get_db
 from app.services.admin_telemetry_service import AdminTelemetryEventData, persist_admin_telemetry_event
+from app.services.audit_service import record_audit
 
 
 def _required_env_value(name: str) -> str:
@@ -141,6 +142,8 @@ def _action_from_request(method: str, path: str, status_code: int) -> str:
 
 def _extract_resource(path: str) -> tuple[str | None, str | None]:
     parts = [p for p in path.strip("/").split("/") if p]
+    if len(parts) >= 2 and parts[0] == "api" and parts[1] == "v1":
+        parts = parts[2:]
     if not parts:
         return None, None
 
@@ -157,6 +160,25 @@ def _extract_resource(path: str) -> tuple[str | None, str | None]:
         return "authors", parts[1] if len(parts) > 1 else None
 
     return parts[0], None
+
+
+def _should_write_audit(method: str, path: str) -> bool:
+    m = (method or "").upper()
+    if m not in {"POST", "PUT", "PATCH", "DELETE"}:
+        return False
+    if path.startswith("/health"):
+        return False
+    if path.startswith("/api/v1/telemetry/"):
+        return False
+    return True
+
+
+def _path_without_version(path: str) -> str:
+    if path.startswith("/api/v1/"):
+        return "/" + path[len("/api/v1/"):]
+    if path == "/api/v1":
+        return "/"
+    return path
 
 
 def _state_hash(raw: str | None) -> str | None:
@@ -268,6 +290,51 @@ async def admin_observability_middleware(request: Request, call_next):
                     except Exception:
                         pass
 
+        if _should_write_audit(request.method, path):
+            status_code = response.status_code if response is not None else 500
+            result = "success" if status_code < 400 and error is None else "failure"
+            resource_type, resource_id_raw = _extract_resource(path)
+            resource_id = int(resource_id_raw) if resource_id_raw and resource_id_raw.isdigit() else None
+
+            db = None
+            db_gen = None
+            try:
+                db, db_gen = _open_telemetry_db_session(request)
+                actor_user_id, _ = _resolve_actor(request.headers.get("Authorization"), db)
+                record_audit(
+                    db=db,
+                    actor_user_id=actor_user_id,
+                    action=f"http:{request.method.upper()}:{_path_without_version(path)}",
+                    resource_type=resource_type,
+                    resource_id=resource_id,
+                    metadata={
+                        "request_id": request_id,
+                        "method": request.method,
+                        "path": path,
+                        "query": request.url.query,
+                        "status_code": status_code,
+                        "result": result,
+                    },
+                )
+                db.commit()
+            except Exception:
+                try:
+                    if db is not None:
+                        db.rollback()
+                except Exception:
+                    pass
+            finally:
+                if db_gen is not None:
+                    try:
+                        db_gen.close()
+                    except Exception:
+                        pass
+                elif db is not None:
+                    try:
+                        db.close()
+                    except Exception:
+                        pass
+
 # CORS configuration
 # In production, set CORS_ORIGINS env variable with your frontend domain
 allowed_origins = [
@@ -337,29 +404,29 @@ enable_legacy_routes = os.getenv("ENABLE_LEGACY_UNPREFIXED_ROUTES", legacy_defau
     "yes",
 }
 if enable_legacy_routes:
-    app.include_router(auth_router.router)
-    app.include_router(admin_users_router.router)
-    app.include_router(users_router.router)
-    app.include_router(hierarchy_public_router.router)
-    app.include_router(hierarchy_admin_router.router)
-    app.include_router(submissions_router.router)
-    app.include_router(moderation_router.router)
-    app.include_router(content_router.router)
-    app.include_router(search_router.router)
-    app.include_router(analytics_router.router)
-    app.include_router(analytics_router.admin_router)
-    app.include_router(analytics_router.public_router)
-    app.include_router(admin_settings_router.router)
-    app.include_router(admin_audit_router.router)
-    app.include_router(dictionary_router.router)
-    app.include_router(idiom_router.router)
-    app.include_router(article_router.router)
-    app.include_router(rec_router.router)
-    app.include_router(interactions_router.router)
-    app.include_router(poetry_router.router)
-    app.include_router(telemetry_router.router)
-    app.include_router(ai_ops_router.router)
-    app.include_router(ai_ops_router.governance_router)
+    app.include_router(auth_router.router, include_in_schema=False)
+    app.include_router(admin_users_router.router, include_in_schema=False)
+    app.include_router(users_router.router, include_in_schema=False)
+    app.include_router(hierarchy_public_router.router, include_in_schema=False)
+    app.include_router(hierarchy_admin_router.router, include_in_schema=False)
+    app.include_router(submissions_router.router, include_in_schema=False)
+    app.include_router(moderation_router.router, include_in_schema=False)
+    app.include_router(content_router.router, include_in_schema=False)
+    app.include_router(search_router.router, include_in_schema=False)
+    app.include_router(analytics_router.router, include_in_schema=False)
+    app.include_router(analytics_router.admin_router, include_in_schema=False)
+    app.include_router(analytics_router.public_router, include_in_schema=False)
+    app.include_router(admin_settings_router.router, include_in_schema=False)
+    app.include_router(admin_audit_router.router, include_in_schema=False)
+    app.include_router(dictionary_router.router, include_in_schema=False)
+    app.include_router(idiom_router.router, include_in_schema=False)
+    app.include_router(article_router.router, include_in_schema=False)
+    app.include_router(rec_router.router, include_in_schema=False)
+    app.include_router(interactions_router.router, include_in_schema=False)
+    app.include_router(poetry_router.router, include_in_schema=False)
+    app.include_router(telemetry_router.router, include_in_schema=False)
+    app.include_router(ai_ops_router.router, include_in_schema=False)
+    app.include_router(ai_ops_router.governance_router, include_in_schema=False)
 
 
 @app.get("/health")

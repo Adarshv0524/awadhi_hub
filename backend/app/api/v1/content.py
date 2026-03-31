@@ -23,6 +23,7 @@ from app.db.models import (
 from app.schemas.content_navigation import ContentNavigationOut
 from app.schemas.content_chapter import ChapterDohaItem, ChapterDohasOut
 from app.services.content_service import get_content_navigation
+from app.services.engagement_service import record_view
 
 router = APIRouter(prefix="/content", tags=["content"])
 
@@ -189,8 +190,9 @@ def _get_chapter_dohas_payload(
 
 
 
-@router.get("/doha", response_model=List[DohaOut])
-def list_dohas(
+@router.get("/poetry", response_model=List[DohaOut])
+@router.get("/doha", response_model=List[DohaOut], include_in_schema=False)
+def list_poetry(
     db: Session = Depends(get_db),
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
@@ -207,9 +209,7 @@ def list_dohas(
     ] = Query("created_at"),
     order: Literal["asc", "desc"] = Query("desc"),
 ):
-    """
-    List canonical doha entries (for now mostly for debugging / browsing).
-    """
+    """List canonical poetry entries from the legacy canonical table."""
     q = _doha_query_with_metadata(db).filter(
         DohaEntry.is_deleted == False,
         DohaEntry.status == "active",
@@ -234,8 +234,10 @@ def list_dohas(
     return [_serialize_doha_with_metadata(row) for row in rows]
 
 
-@router.get("/doha/{doha_id}", response_model=DohaOut)
-def get_doha(doha_id: int, db: Session = Depends(get_db)):
+@router.get("/poetry/{poetry_id}", response_model=DohaOut)
+@router.get("/doha/{poetry_id}", response_model=DohaOut, include_in_schema=False)
+def get_poetry(poetry_id: int, db: Session = Depends(get_db)):
+    doha_id = poetry_id
     row = (
         _doha_query_with_metadata(db)
         .filter(
@@ -245,37 +247,54 @@ def get_doha(doha_id: int, db: Session = Depends(get_db)):
         .first()
     )
     if not row:
-        raise HTTPException(status_code=404, detail="Doha not found")
+        raise HTTPException(status_code=404, detail="Poetry not found")
 
     doha = row[0]
     if doha.status != "active":
-        raise HTTPException(status_code=404, detail="Doha not found")
+        raise HTTPException(status_code=404, detail="Poetry not found")
+    record_view(db, "doha", int(doha.id))
+    db.commit()
     return _serialize_doha_with_metadata(row)
 
 
-@router.get("/doha/{doha_id}/navigation", response_model=ContentNavigationOut)
-def get_doha_navigation_endpoint(doha_id: int, db: Session = Depends(get_db)):
-    """Return previous/current/next doha cards based on chapter sequence."""
-    return get_content_navigation(db, "doha", doha_id)
+@router.get("/poetry/{poetry_id}/navigation", response_model=ContentNavigationOut)
+@router.get("/doha/{poetry_id}/navigation", response_model=ContentNavigationOut, include_in_schema=False)
+def get_poetry_navigation_endpoint(poetry_id: int, db: Session = Depends(get_db)):
+    """Return previous/current/next poetry cards based on chapter sequence."""
+    doha_id = poetry_id
+    nav = get_content_navigation(db, "doha", doha_id)
+    record_view(db, "doha", int(doha_id))
+    db.commit()
+    return nav
 
 
 @router.get("/dictionary/{entry_id}/navigation", response_model=ContentNavigationOut)
 def get_dictionary_navigation_endpoint(entry_id: int, db: Session = Depends(get_db)):
-    return get_content_navigation(db, "dictionary", entry_id)
+    nav = get_content_navigation(db, "dictionary", entry_id)
+    record_view(db, "dictionary", int(entry_id))
+    db.commit()
+    return nav
 
 
 @router.get("/idiom/{entry_id}/navigation", response_model=ContentNavigationOut)
 def get_idiom_navigation_endpoint(entry_id: int, db: Session = Depends(get_db)):
-    return get_content_navigation(db, "idiom", entry_id)
+    nav = get_content_navigation(db, "idiom", entry_id)
+    record_view(db, "idiom", int(entry_id))
+    db.commit()
+    return nav
 
 
 @router.get("/article/{entry_id}/navigation", response_model=ContentNavigationOut)
 def get_article_navigation_endpoint(entry_id: int, db: Session = Depends(get_db)):
-    return get_content_navigation(db, "article", entry_id)
+    nav = get_content_navigation(db, "article", entry_id)
+    record_view(db, "article", int(entry_id))
+    db.commit()
+    return nav
 
 
-@router.get("/chapters/{chapter_id}/dohas", response_model=ChapterDohasOut)
-def list_chapter_dohas(
+@router.get("/chapters/{chapter_id}/poetry", response_model=ChapterDohasOut)
+@router.get("/chapters/{chapter_id}/dohas", response_model=ChapterDohasOut, include_in_schema=False)
+def list_chapter_poetry(
     chapter_id: int,
     db: Session = Depends(get_db),
     offset: int = Query(0, ge=0),
@@ -293,10 +312,15 @@ def list_chapter_dohas(
 
 
 @router.get(
-    "/by-path/{author_slug}/{work_slug}/{chapter_slug}/dohas",
+    "/by-path/{author_slug}/{work_slug}/{chapter_slug}/poetry",
     response_model=ChapterDohasOut,
 )
-def list_chapter_dohas_by_path(
+@router.get(
+    "/by-path/{author_slug}/{work_slug}/{chapter_slug}/dohas",
+    response_model=ChapterDohasOut,
+    include_in_schema=False,
+)
+def list_chapter_poetry_by_path(
     author_slug: str,
     work_slug: str,
     chapter_slug: str,
@@ -339,12 +363,14 @@ def list_chapter_dohas_by_path(
     return _get_chapter_dohas_payload(db, chapter, offset, limit)
 
 
-@router.get("/doha/{doha_id}/history", response_model=List[ContentVersionOut])
-def get_doha_history(doha_id: int, db: Session = Depends(get_db)):
+@router.get("/poetry/{poetry_id}/history", response_model=List[ContentVersionOut])
+@router.get("/doha/{poetry_id}/history", response_model=List[ContentVersionOut], include_in_schema=False)
+def get_poetry_history(poetry_id: int, db: Session = Depends(get_db)):
+    doha_id = poetry_id
     # Optional: ensure doha exists first
     doha = db.query(DohaEntry).filter(DohaEntry.id == doha_id, DohaEntry.is_deleted == False).first()
     if not doha:
-        raise HTTPException(status_code=404, detail="Doha not found")
+        raise HTTPException(status_code=404, detail="Poetry not found")
 
     versions = (
         db.query(ContentVersion)
@@ -358,8 +384,9 @@ def get_doha_history(doha_id: int, db: Session = Depends(get_db)):
     return versions
 
 
-@router.get("/by-path/{hierarchy_path:path}", response_model=DohaOut)
-def get_doha_by_path(hierarchy_path: str, db: Session = Depends(get_db)):
+@router.get("/poetry/by-path/{hierarchy_path:path}", response_model=DohaOut)
+@router.get("/by-path/{hierarchy_path:path}", response_model=DohaOut, include_in_schema=False)
+def get_poetry_by_path(hierarchy_path: str, db: Session = Depends(get_db)):
     row = (
         _doha_query_with_metadata(db)
         .filter(
@@ -369,9 +396,9 @@ def get_doha_by_path(hierarchy_path: str, db: Session = Depends(get_db)):
         .first()
     )
     if not row:
-        raise HTTPException(status_code=404, detail="Doha not found for this path")
+        raise HTTPException(status_code=404, detail="Poetry not found for this path")
 
     doha = row[0]
     if doha.status != "active":
-        raise HTTPException(status_code=404, detail="Doha not found for this path")
+        raise HTTPException(status_code=404, detail="Poetry not found for this path")
     return _serialize_doha_with_metadata(row)

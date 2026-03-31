@@ -2,7 +2,18 @@
 // Centralized admin API wrapper
 import { z } from "zod";
 
-const API_BASE = import.meta.env.PUBLIC_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : "");
+const API_BASE = (import.meta.env.PUBLIC_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : ""))
+  .replace(/\/$/, "")
+  .replace(/\/api\/v1$/, "");
+const API_V1_PREFIX = "/api/v1";
+
+function normalizeApiPath(path: string): string {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  if (normalized === API_V1_PREFIX || normalized.startsWith(`${API_V1_PREFIX}/`)) {
+    return normalized;
+  }
+  return `${API_V1_PREFIX}${normalized}`;
+}
 
 function resolveApiBase(override?: string): string {
   return (override && override.trim()) || API_BASE;
@@ -48,7 +59,7 @@ async function requestJson<T>(
   }
 
   try {
-    const res = await fetchWithLocalFallback(`${base}${path}`, init);
+    const res = await fetchWithLocalFallback(`${base}${normalizeApiPath(path)}`, init);
     if (!res.ok) {
       throw new Error(`Request failed (${res.status}) for ${path}`);
     }
@@ -70,7 +81,7 @@ async function requestNoContent(path: string, init: RequestInit = {}, apiBaseOve
   }
 
   try {
-    const res = await fetchWithLocalFallback(`${base}${path}`, init);
+    const res = await fetchWithLocalFallback(`${base}${normalizeApiPath(path)}`, init);
     if (!res.ok) {
       throw new Error(`Request failed (${res.status}) for ${path}`);
     }
@@ -192,6 +203,43 @@ export interface ModerationSubmission {
   created_at: string;
 }
 
+export type ModerationReport = {
+  id: number;
+  user_id: number;
+  reporter_username?: string | null;
+  reporter_email?: string | null;
+  content_type: string;
+  content_id: number;
+  reason: string;
+  note?: string | null;
+  status: string;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  content_title?: string | null;
+  content_snippet?: string | null;
+  content_path?: string | null;
+};
+
+export async function getModerationReports(params: {
+  status?: string;
+  content_type?: string;
+  reason?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<{ total_count: number; count: number; results: ModerationReport[] }> {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set("status", params.status);
+  if (params.content_type) qs.set("content_type", params.content_type);
+  if (params.reason) qs.set("reason", params.reason);
+  qs.set("limit", String(params.limit ?? 50));
+  qs.set("offset", String(params.offset ?? 0));
+  return requestJson<{ total_count: number; count: number; results: ModerationReport[] }>(
+    `/api/v1/moderation/reports?${qs.toString()}`,
+    { headers: getAuthHeader() }
+  );
+}
+
 export interface ModerationTriageRecommendation {
   submission_id: number;
   content_type: string;
@@ -219,7 +267,7 @@ export async function getUsers(
   if (q) params.set("q", q);
 
   try {
-    const res = await fetchWithLocalFallback(`${base}/admin/users?${params.toString()}`, {
+    const res = await fetchWithLocalFallback(`${base}/api/v1/admin/users?${params.toString()}`, {
       headers: getAuthHeader(),
     });
     if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`);
@@ -251,7 +299,7 @@ export async function updateUser(userId: number, data: {
     throw new Error("Admin API base URL is not configured. Set PUBLIC_API_BASE.");
   }
 
-  const res = await fetchWithLocalFallback(`${base}/admin/users/${userId}`, {
+  const res = await fetchWithLocalFallback(`${base}/api/v1/admin/users/${userId}`, {
     method: "PATCH",
     headers: { ...getAuthHeader(), "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -267,14 +315,14 @@ export async function deactivateUser(userId: number): Promise<void> {
 
 // Audit Logs
 export async function getAuditLogs(limit = 50, offset = 0): Promise<PaginatedResponse<AuditLog>> {
-  const payload = await requestJson<unknown>(`/admin/audit_logs?limit=${limit}&offset=${offset}`, {
+  const payload = await requestJson<unknown>(`/api/v1/admin/audit_logs?limit=${limit}&offset=${offset}`, {
     headers: getAuthHeader(),
   });
   return paginatedAuditLogsSchema.parse(payload) as PaginatedResponse<AuditLog>;
 }
 
 export async function getAuditLogById(id: number): Promise<AuditLog> {
-  const payload = await requestJson<unknown>(`/admin/audit_logs/${id}`, {
+  const payload = await requestJson<unknown>(`/api/v1/admin/audit_logs/${id}`, {
     headers: getAuthHeader(),
   });
   return auditLogSchema.parse(payload) as AuditLog;
@@ -282,13 +330,13 @@ export async function getAuditLogById(id: number): Promise<AuditLog> {
 
 // System Settings
 export async function getSettings(): Promise<Setting[]> {
-  return requestJson<Setting[]>(`/admin/system_settings`, {
+  return requestJson<Setting[]>(`/api/v1/admin/system_settings`, {
     headers: getAuthHeader(),
   });
 }
 
 export async function updateSetting(key: string, value: any): Promise<void> {
-  await requestNoContent(`/admin/system_settings/${key}`, {
+  await requestNoContent(`/api/v1/admin/system_settings/${key}`, {
     method: "PUT",
     headers: { ...getAuthHeader(), "Content-Type": "application/json" },
     body: JSON.stringify({ value }),
@@ -296,7 +344,7 @@ export async function updateSetting(key: string, value: any): Promise<void> {
 }
 
 export async function deleteSetting(key: string): Promise<void> {
-  await requestNoContent(`/admin/system_settings/${key}`, {
+  await requestNoContent(`/api/v1/admin/system_settings/${key}`, {
     method: "DELETE",
     headers: getAuthHeader(),
   });
@@ -304,13 +352,13 @@ export async function deleteSetting(key: string): Promise<void> {
 
 // Hierarchy Management
 export async function getAuthors(limit = 100): Promise<Author[]> {
-  return requestJson<Author[]>(`/authors?limit=${limit}`, {
+  return requestJson<Author[]>(`/api/v1/authors?limit=${limit}`, {
     headers: getAuthHeader(),
   });
 }
 
 export async function createAuthor(data: { slug: string; name: string; language?: string; short_bio?: string }): Promise<Author> {
-  const res = await fetch(`${API_BASE}/admin/hierarchy/authors`, {
+  const res = await fetch(`${API_BASE}/api/v1/admin/hierarchy/authors`, {
     method: "POST",
     headers: { ...getAuthHeader(), "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -320,13 +368,13 @@ export async function createAuthor(data: { slug: string; name: string; language?
 }
 
 export async function getWorks(authorSlug: string, limit = 50): Promise<Work[]> {
-  return requestJson<Work[]>(`/authors/${authorSlug}/works?limit=${limit}`, {
+  return requestJson<Work[]>(`/api/v1/authors/${authorSlug}/works?limit=${limit}`, {
     headers: getAuthHeader(),
   });
 }
 
 export async function createWork(authorId: number, data: { slug: string; title: string; description?: string }): Promise<Work> {
-  const res = await fetch(`${API_BASE}/admin/hierarchy/authors/${authorId}/works`, {
+  const res = await fetch(`${API_BASE}/api/v1/admin/hierarchy/authors/${authorId}/works`, {
     method: "POST",
     headers: { ...getAuthHeader(), "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -336,14 +384,14 @@ export async function createWork(authorId: number, data: { slug: string; title: 
 }
 
 export async function getChapters(authorSlug: string, workSlug: string, limit = 200): Promise<Chapter[]> {
-  const payload = await requestJson<unknown>(`/authors/${authorSlug}/works/${workSlug}/chapters?limit=${limit}`, {
+  const payload = await requestJson<unknown>(`/api/v1/authors/${authorSlug}/works/${workSlug}/chapters?limit=${limit}`, {
     headers: getAuthHeader(),
   });
   return z.array(chapterSchema).parse(payload) as Chapter[];
 }
 
 export async function createChapter(workId: number, data: { slug: string; title: string; number: number }): Promise<Chapter> {
-  const res = await fetch(`${API_BASE}/admin/hierarchy/works/${workId}/chapters`, {
+  const res = await fetch(`${API_BASE}/api/v1/admin/hierarchy/works/${workId}/chapters`, {
     method: "POST",
     headers: { ...getAuthHeader(), "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -358,13 +406,13 @@ export async function getModerationQueue(status?: string, limit = 50, offset = 0
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (status) params.append("status", status);
 
-  return requestJson<ModerationSubmission[]>(`/moderation/submissions?${params}`, {
+  return requestJson<ModerationSubmission[]>(`/api/v1/moderation/submissions?${params}`, {
     headers: getAuthHeader(),
   });
 }
 
 export async function getModerationSubmissionDetail(submissionId: number): Promise<any> {
-  return requestJson<any>(`/moderation/submissions/${submissionId}`, {
+  return requestJson<any>(`/api/v1/moderation/submissions/${submissionId}`, {
     headers: getAuthHeader(),
   });
 }
@@ -375,7 +423,7 @@ export async function approveSubmission(submissionId: number, note?: string, gui
     guideline_version,
     approved_by_human: true,
   };
-  const res = await fetch(`${API_BASE}/moderation/submissions/${submissionId}/approve`, {
+  const res = await fetch(`${API_BASE}/api/v1/moderation/submissions/${submissionId}/approve`, {
     method: "POST",
     headers: { ...getAuthHeader(), "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -384,7 +432,7 @@ export async function approveSubmission(submissionId: number, note?: string, gui
 }
 
 export async function rejectSubmission(submissionId: number, reason: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/moderation/submissions/${submissionId}/reject`, {
+  const res = await fetch(`${API_BASE}/api/v1/moderation/submissions/${submissionId}/reject`, {
     method: "POST",
     headers: { ...getAuthHeader(), "Content-Type": "application/json" },
     body: JSON.stringify({ note: reason, approved_by_human: true }),
@@ -403,7 +451,7 @@ export async function approveSubmissionWithModelDecision(
     model_rationale_snippets?: string[];
   },
 ): Promise<void> {
-  const res = await fetch(`${API_BASE}/moderation/submissions/${submissionId}/approve`, {
+  const res = await fetch(`${API_BASE}/api/v1/moderation/submissions/${submissionId}/approve`, {
     method: "POST",
     headers: { ...getAuthHeader(), "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -421,7 +469,7 @@ export async function rejectSubmissionWithModelDecision(
     model_rationale_snippets?: string[];
   },
 ): Promise<void> {
-  const res = await fetch(`${API_BASE}/moderation/submissions/${submissionId}/reject`, {
+  const res = await fetch(`${API_BASE}/api/v1/moderation/submissions/${submissionId}/reject`, {
     method: "POST",
     headers: { ...getAuthHeader(), "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -454,7 +502,7 @@ export async function logModelDecision(payload: {
 // Auth Check
 export async function getCurrentUser(): Promise<{ id: number; username: string; email: string; role: string } | null> {
   try {
-    return await requestJson<{ id: number; username: string; email: string; role: string }>(`/auth/me`, {
+    return await requestJson<{ id: number; username: string; email: string; role: string }>(`/api/v1/auth/me`, {
       headers: getAuthHeader(),
     });
   } catch {

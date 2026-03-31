@@ -5,7 +5,9 @@ const ACCESS_KEY = "awadhi_access_token";
 const REFRESH_KEY = "awadhi_refresh_token";
 const USER_CACHE_KEY = "awadhi_user_cache";
 
-export const API_BASE = import.meta.env.PUBLIC_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : "");
+export const API_BASE = (import.meta.env.PUBLIC_API_BASE || (import.meta.env.DEV ? "http://localhost:8000" : ""))
+  .replace(/\/$/, "")
+  .replace(/\/api\/v1$/, "");
 
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -83,7 +85,7 @@ export async function logoutAndRedirect(redirect = "/") {
   try {
     const refresh = typeof window !== "undefined" ? window.localStorage.getItem("awadhi_refresh_token") : null;
     if (refresh) {
-      await fetch(`${API_BASE}/auth/logout`, {
+      await fetch(`${API_BASE}/api/v1/auth/logout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh_token: refresh }),

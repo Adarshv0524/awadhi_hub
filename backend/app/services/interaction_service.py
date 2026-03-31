@@ -8,6 +8,7 @@ from app.db.models import (
     UserInteraction,
     ShareLog,
     Report,
+    User,
     EngagementKPI,
     DohaEntry,
     DictionaryEntry,
@@ -369,6 +370,79 @@ def create_report(
         db.rollback()
         raise
     return {"ok": True, "report_id": rpt.id, "status": rpt.status}
+
+
+def list_reports_for_moderation(
+    db: Session,
+    status: Optional[str] = None,
+    content_type: Optional[str] = None,
+    reason: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    q = (
+        db.query(
+            Report.id,
+            Report.user_id,
+            User.username,
+            User.email,
+            Report.content_type,
+            Report.content_id,
+            Report.reason,
+            Report.note,
+            Report.status,
+            Report.report_metadata,
+            Report.created_at,
+            Report.updated_at,
+        )
+        .outerjoin(User, User.id == Report.user_id)
+    )
+
+    if status:
+        q = q.filter(Report.status == status)
+    if content_type:
+        q = q.filter(Report.content_type == content_type)
+    if reason:
+        q = q.filter(Report.reason == reason)
+
+    total_count = q.with_entities(func.count(Report.id)).scalar() or 0
+
+    rows = (
+        q.order_by(Report.created_at.desc(), Report.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    results = []
+    for r in rows:
+        preview = _build_content_preview(db, str(r.content_type), int(r.content_id))
+        results.append(
+            {
+                "id": int(r.id),
+                "user_id": int(r.user_id),
+                "reporter_username": r.username,
+                "reporter_email": r.email,
+                "content_type": str(r.content_type),
+                "content_id": int(r.content_id),
+                "reason": str(r.reason),
+                "note": r.note,
+                "status": str(r.status),
+                "metadata": r.report_metadata,
+                "created_at": r.created_at,
+                "updated_at": r.updated_at,
+                "content_title": preview.get("content_title"),
+                "content_snippet": preview.get("content_snippet"),
+                "content_path": preview.get("content_path"),
+            }
+        )
+
+    return {
+        "total_count": int(total_count),
+        "results": results,
+    }
+
+
 def list_user_bookmarks(db: Session, user_id: int, limit: int = 50, offset: int = 0):
     return list_user_interactions(
         db=db,

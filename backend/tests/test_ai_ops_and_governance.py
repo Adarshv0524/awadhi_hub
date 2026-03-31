@@ -132,14 +132,15 @@ def test_3d_analytics_and_governance_exports(client, db):
     admin_headers = {"Authorization": f"Bearer {create_access_token(admin.id)}"}
     mod_headers = {"Authorization": f"Bearer {create_access_token(moderator.id)}"}
 
-    graph = client.get("/admin/analytics/v2/3d/actor-resource-graph", headers=admin_headers)
+    graph = client.get("/admin/analytics/insights?view=actor-resource-graph", headers=admin_headers)
     assert graph.status_code == 200
-    assert "nodes" in graph.json()
-    assert "links" in graph.json()
+    graph_data = graph.json()["data"]
+    assert "nodes" in graph_data
+    assert "links" in graph_data
 
-    surface = client.get("/admin/analytics/v2/3d/latency-error-surface", headers=admin_headers)
+    surface = client.get("/admin/analytics/insights?view=latency-error-surface", headers=admin_headers)
     assert surface.status_code == 200
-    assert isinstance(surface.json(), list)
+    assert isinstance(surface.json()["data"], list)
 
     export_audit = client.get("/api/v1/governance/export/audit", headers=mod_headers)
     assert export_audit.status_code == 200

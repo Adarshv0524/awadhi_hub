@@ -6,6 +6,31 @@
 
   export let apiBase: string = "";
 
+  const API_V1_PREFIX = "/api/v1";
+
+  function resolvedApiBase(): string {
+    return (apiBase || "").replace(/\/$/, "").replace(/\/api\/v1$/, "");
+  }
+
+  function apiUrl(path: string): string {
+    const normalized = path.startsWith("/") ? path : `/${path}`;
+    const v1Path =
+      normalized === API_V1_PREFIX || normalized.startsWith(`${API_V1_PREFIX}/`)
+        ? normalized
+        : `${API_V1_PREFIX}${normalized}`;
+    return `${resolvedApiBase()}${v1Path}`;
+  }
+
+  function authHeaders(includeJson = false): Record<string, string> {
+    const headers: Record<string, string> = {};
+    if (includeJson) headers["Content-Type"] = "application/json";
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("awadhi_access_token");
+      if (token) headers.Authorization = `Bearer ${token}`;
+    }
+    return headers;
+  }
+
   // Types
   type Author = { id: number; slug: string; name: string };
   type Work = { id: number; slug: string; title: string };
@@ -83,7 +108,8 @@
   onMount(async () => {
     // Fetch current user
     try {
-      const userResponse = await fetch(`${apiBase}/api/v1/users/me`, {
+      const userResponse = await fetch(apiUrl("/auth/me"), {
+        headers: authHeaders(),
         credentials: "include",
       });
       if (userResponse.ok) {
@@ -95,7 +121,7 @@
 
     // Fetch poetry types
     try {
-      const typesResponse = await fetch(`${apiBase}/api/v1/poetry/types`, {
+      const typesResponse = await fetch(apiUrl("/poetry/types"), {
         credentials: "include",
       });
       if (typesResponse.ok) {
@@ -133,7 +159,8 @@
 
     // Fetch classical authors
     try {
-      const authorsResponse = await fetch(`${apiBase}/api/v1/hierarchy/authors?limit=100`, {
+      const authorsResponse = await fetch(apiUrl("/authors?limit=100"), {
+        headers: authHeaders(),
         credentials: "include",
       });
       if (authorsResponse.ok) {
@@ -239,8 +266,8 @@
 
     try {
       const res = await fetch(
-        `${apiBase}/api/v1/hierarchy/authors/${selected_author_slug}/works?limit=100`,
-        { credentials: "include" }
+        apiUrl(`/authors/${selected_author_slug}/works?limit=100`),
+        { headers: authHeaders(), credentials: "include" }
       );
       if (res.ok) {
         const data = await res.json();
@@ -260,8 +287,8 @@
 
     try {
       const res = await fetch(
-        `${apiBase}/api/v1/hierarchy/authors/${selected_author_slug}/works/${selected_work_slug}/chapters?limit=100`,
-        { credentials: "include" }
+        apiUrl(`/authors/${selected_author_slug}/works/${selected_work_slug}/chapters?limit=100`),
+        { headers: authHeaders(), credentials: "include" }
       );
       if (res.ok) {
         const data = await res.json();
@@ -367,9 +394,9 @@
       }
 
       // Submit to API
-      const response = await fetch(`${apiBase}/api/v1/submissions`, {
+      const response = await fetch(apiUrl("/submissions"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders(true),
         credentials: "include",
         body: JSON.stringify(payload),
       });

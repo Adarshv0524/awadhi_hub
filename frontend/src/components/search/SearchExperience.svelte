@@ -6,19 +6,13 @@
   import Button from "../ui/Button.svelte";
   import ContentCard from "../ui/ContentCard.svelte";
 
-  type ContentFilter = "all" | "poetry" | "doha" | "dictionary" | "idiom" | "article";
+  type ContentFilter = "all" | "poetry" | "dictionary" | "idiom" | "article";
   type SortFilter = "relevance" | "recent";
 
   type PoetryType = {
     poetry_type: string;
     display_name: string;
     is_active?: boolean;
-  };
-
-  type DohaItem = {
-    id: number;
-    main_text: string;
-    meaning?: string;
   };
 
   type PoetryItem = {
@@ -65,9 +59,7 @@
 
   let poetryTypes: PoetryType[] = [];
 
-  let dohas: DohaItem[] = [];
   let poetry: PoetryItem[] = [];
-  let filteredPoetry: PoetryItem[] = [];
   let dictionary: DictionaryItem[] = [];
   let idioms: IdiomItem[] = [];
   let articles: ArticleItem[] = [];
@@ -85,26 +77,19 @@
   const labels: Record<ContentFilter, string> = {
     all: "All",
     poetry: "Poetry",
-    doha: "Doha",
     dictionary: "Dictionary",
     idiom: "Idioms",
     article: "Articles",
   };
 
-  const sections = ["poetry", "doha", "dictionary", "idiom", "article"] as const;
+  const sections = ["poetry", "dictionary", "idiom", "article"] as const;
 
   const shouldFetch = (name: typeof sections[number]) => contentFilter === "all" || contentFilter === name;
 
-  $: filteredPoetry =
-    contentFilter === "all" && shouldFetch("doha")
-      ? poetry.filter((item) => String(item.poetry_type || "").toLowerCase() !== "doha")
-      : poetry;
-
   $: totalResults =
-    filteredPoetry.length + dohas.length + dictionary.length + idioms.length + articles.length;
+    poetry.length + dictionary.length + idioms.length + articles.length;
 
   function clearResults() {
-    dohas = [];
     poetry = [];
     dictionary = [];
     idioms = [];
@@ -172,12 +157,6 @@
 
     const jobs: Array<{ key: typeof sections[number]; path: string }> = [];
 
-    if (shouldFetch("doha")) {
-      const dohaParams = new URLSearchParams(sharedParams);
-      dohaParams.set("poetry_type", "doha");
-      jobs.push({ key: "doha", path: `/api/v1/poetry/search?${dohaParams.toString()}` });
-    }
-
     if (shouldFetch("poetry")) {
       const poetryParams = new URLSearchParams(sharedParams);
       if (poetryType !== "all") poetryParams.set("poetry_type", poetryType);
@@ -217,7 +196,6 @@
       }
 
       const { key, data } = result.value;
-      if (key === "doha") dohas = Array.isArray(data?.results) ? data.results : [];
       if (key === "poetry") poetry = Array.isArray(data?.results) ? data.results : [];
       if (key === "dictionary") dictionary = Array.isArray(data) ? data : [];
       if (key === "idiom") idioms = Array.isArray(data) ? data : [];
@@ -294,7 +272,7 @@
   <div class="glass-panel p-5 md:p-7">
     <h1 class="mb-2 text-center text-3xl md:text-4xl font-bold">Search Awadhi Corpus</h1>
     <p class="text-muted mx-auto mb-6 max-w-2xl text-center text-sm md:text-base">
-      Explore doha, poetry forms, dictionary entries, idioms, and articles from one place.
+      Explore poetry forms, dictionary entries, idioms, and articles from one place.
     </p>
 
     <form on:submit={onSubmit} class="space-y-4" aria-label="Search form">
@@ -411,11 +389,11 @@
         {/if}
       </div>
 
-      {#if shouldFetch("poetry") && filteredPoetry.length > 0}
+      {#if shouldFetch("poetry") && poetry.length > 0}
         <section class="surface-shell p-4 md:p-5">
-          <h2 class="mb-3 text-2xl">Poetry Forms ({filteredPoetry.length})</h2>
+          <h2 class="mb-3 text-2xl">Poetry Forms ({poetry.length})</h2>
           <div class="space-y-3">
-            {#each filteredPoetry as item}
+            {#each poetry as item}
               <ContentCard>
                 <a href={`/poetry/${item.id}`} class="mb-2 block text-lg font-semibold hover:underline">{item.main_text}</a>
                 <div class="mb-2 flex flex-wrap gap-2">
@@ -428,22 +406,6 @@
                     open chapter view
                   </a>
                 </p>
-                {#if item.meaning}
-                  <p class="text-sm text-muted">{item.meaning}</p>
-                {/if}
-              </ContentCard>
-            {/each}
-          </div>
-        </section>
-      {/if}
-
-      {#if shouldFetch("doha") && dohas.length > 0}
-        <section class="surface-shell p-4 md:p-5">
-          <h2 class="mb-3 text-2xl">Doha ({dohas.length})</h2>
-          <div class="space-y-3">
-            {#each dohas as item}
-              <ContentCard>
-                <a href={`/poetry/${item.id}`} class="mb-2 block text-lg font-semibold hover:underline">{item.main_text}</a>
                 {#if item.meaning}
                   <p class="text-sm text-muted">{item.meaning}</p>
                 {/if}

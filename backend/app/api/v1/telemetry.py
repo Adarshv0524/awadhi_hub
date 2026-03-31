@@ -19,7 +19,7 @@ from app.services.admin_telemetry_service import (
 
 logger = logging.getLogger("app.api.telemetry")
 
-router = APIRouter(prefix="/api/v1/telemetry", tags=["telemetry"])
+router = APIRouter(prefix="/telemetry", tags=["telemetry"])
 
 
 class RendererFallbackEventIn(BaseModel):

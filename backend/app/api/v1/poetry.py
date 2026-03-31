@@ -15,7 +15,7 @@ from app.services.poetry_service import (
 )
 
 
-router = APIRouter(prefix="/api/v1/poetry", tags=["poetry"])
+router = APIRouter(prefix="/poetry", tags=["poetry"])
 
 
 class HierarchyAuthorOut(BaseModel):
@@ -52,6 +52,12 @@ class PoetryCurrentOut(BaseModel):
     text_romanized: Optional[str] = None
     meaning: Optional[str] = None
     prosody_metadata: Optional[dict[str, Any]] = None
+    views_count: int = 0
+    likes_count: int = 0
+    shares_count: int = 0
+    bookmarks_count: int = 0
+    search_hits_count: int = 0
+    weight_score: float = 0.0
 
 
 class PoetryNavSummaryOut(BaseModel):

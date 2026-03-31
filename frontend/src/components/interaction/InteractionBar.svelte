@@ -10,7 +10,7 @@
   } from "../../lib/interactions";
 
   // Props: content identification
-  export let contentType: string; // 'doha' | 'dictionary' | 'idiom' | 'article'
+  export let contentType: string; // poetry types, dictionary, idiom, article
   export let contentId: number;
   export let content:
     | {
@@ -45,6 +45,32 @@
   let reportNote = "";
   let copySuccess = false;
   let shareLink = "";
+    const poetryTypes = new Set([
+      "poetry",
+      "poetry_node",
+      "doha",
+      "chaupai",
+      "sorath",
+      "jhulana",
+      "savaiya",
+      "ghanakshari",
+      "chappay",
+      "other_poetry",
+    ]);
+
+    function contentLabel(type: string): string {
+      if (poetryTypes.has((type || "").toLowerCase())) return "poetry";
+      return (type || "content").toLowerCase();
+    }
+
+    function contentRoute(type: string): string {
+      const normalized = (type || "").toLowerCase();
+      if (poetryTypes.has(normalized)) return "poetry";
+      if (normalized === "idiom") return "idioms";
+      if (normalized === "article") return "articles";
+      return normalized || "content";
+    }
+
   let reportDialogEl: HTMLDivElement | null = null;
   let reportReasonSelectEl: HTMLSelectElement | null = null;
   let lastFocusedElement: HTMLElement | null = null;
@@ -116,17 +142,10 @@
     
     try {
       // Map content types to correct routes (some are plural)
-      const routeMap: Record<string, string> = {
-        doha: "doha",
-        dictionary: "dictionary",
-        idiom: "idioms",     // plural route!
-        article: "articles",  // plural route!
-      };
-      
-      const route = routeMap[contentType] || contentType;
+      const route = contentRoute(contentType);
       const link = `${window.location.origin}/${route}/${contentId}`;
       const title = document.title;
-      const text = `Check out this ${contentType} on Awadhi New`;
+      const text = `Check out this ${contentLabel(contentType)} on Awadhi New`;
 
       // Platform-specific sharing
       if (channel === "native" && navigator.share) {
@@ -164,13 +183,7 @@
       // If share fails, at least copy the link
       if (channel !== "copy") {
         try {
-          const routeMap: Record<string, string> = {
-            doha: "doha",
-            dictionary: "dictionary",
-            idiom: "idioms",
-            article: "articles",
-          };
-          const route = routeMap[contentType] || contentType;
+          const route = contentRoute(contentType);
           const link = `${window.location.origin}/${route}/${contentId}`;
           await navigator.clipboard.writeText(link);
           copySuccess = true;
@@ -189,13 +202,7 @@
   function toggleShareMenu() {
     if (!showShareMenu) {
       // Generate share link when opening menu
-      const routeMap: Record<string, string> = {
-        doha: "doha",
-        dictionary: "dictionary",
-        idiom: "idioms",
-        article: "articles",
-      };
-      const route = routeMap[contentType] || contentType;
+      const route = contentRoute(contentType);
       shareLink = `${window.location.origin}/${route}/${contentId}`;
     }
     showShareMenu = !showShareMenu;

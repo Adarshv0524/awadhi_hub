@@ -1,6 +1,7 @@
 # app/api/v1/moderation.py
 import logging
 from typing import List, Optional, Dict, Any
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,6 +17,7 @@ from app.services.content_service import (
 )
 from app.services.batch_moderation import batch_approve_submissions, BatchValidationError
 from app.services.model_governance_service import append_model_event
+from app.services.interaction_service import list_reports_for_moderation
 
 router = APIRouter(prefix="/moderation", tags=["moderation"])
 
@@ -59,6 +61,30 @@ class BatchApproveOut(BaseModel):
     created: List[Dict[str, Any]]
     skipped: List[int]
     errors: List[Dict[str, Any]]
+
+
+class ModerationReportOut(BaseModel):
+    id: int
+    user_id: int
+    reporter_username: Optional[str] = None
+    reporter_email: Optional[str] = None
+    content_type: str
+    content_id: int
+    reason: str
+    note: Optional[str] = None
+    status: str
+    metadata: Optional[Dict[str, Any]] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    content_title: Optional[str] = None
+    content_snippet: Optional[str] = None
+    content_path: Optional[str] = None
+
+
+class ModerationReportListOut(BaseModel):
+    total_count: int
+    count: int
+    results: List[ModerationReportOut]
 
 # ------- Helpers -------
 def _ensure_can_moderate(submission: Submission):
@@ -126,6 +152,36 @@ def list_pending_submissions(
         .all()
     )
     return subs
+
+
+@router.get(
+    "/reports",
+    response_model=ModerationReportListOut,
+)
+def list_reports_for_moderators(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(Role.MODERATOR)),
+    status: Optional[str] = Query(default="open"),
+    content_type: Optional[str] = Query(default=None),
+    reason: Optional[str] = Query(default=None),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+):
+    del current_user  # role gate handled by dependency
+    payload = list_reports_for_moderation(
+        db=db,
+        status=status,
+        content_type=content_type,
+        reason=reason,
+        limit=limit,
+        offset=offset,
+    )
+    results = payload.get("results", [])
+    return {
+        "total_count": int(payload.get("total_count", 0)),
+        "count": len(results),
+        "results": results,
+    }
 
 @router.get(
     "/submissions/{submission_id}",

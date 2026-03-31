@@ -4,12 +4,20 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
+
+
+def _is_date_only(value: str) -> bool:
+    return len(value.strip()) <= 10
+
+
+def _end_of_day(dt: datetime) -> datetime:
+    return dt.replace(hour=23, minute=59, second=59, microsecond=999999)
 
 from app.db.session import get_db
 from app.core.security import require_role
@@ -19,6 +27,7 @@ from app.services.analytics_service import (
     get_top_content,
     get_growth_trends,
     get_demand_distribution,
+    get_engagement_summary,
 )
 from app.services.admin_telemetry_service import (
     action_throughput,
@@ -58,7 +67,26 @@ class TopContentItem(BaseModel):
     score: float
     views: int
     likes: int
+    bookmarks: int
+    shares: int
     search_hits: int
+
+
+class TopPerformerOut(BaseModel):
+    content_type: str
+    content_id: int
+    score: float
+    title_or_text: str
+
+
+class EngagementSummaryOut(BaseModel):
+    total_views: int = 0
+    total_likes: int = 0
+    total_bookmarks: int = 0
+    total_shares: int = 0
+    total_search_hits: int = 0
+    active_content: int = 0
+    top_performer: TopPerformerOut | None = None
 
 
 class GrowthSeries(BaseModel):
@@ -159,6 +187,11 @@ class SurfacePointOut(BaseModel):
     density: int
 
 
+class AnalyticsInsightsOut(BaseModel):
+    view: str
+    data: Any
+
+
 # ✅ FIX: Remove DemandDistribution wrapper, return plain dict
 
 
@@ -174,6 +207,8 @@ def _date_range(start: str | None, end: str | None):
     if end:
         end = end.strip()
         end_dt = datetime.fromisoformat(end)
+        if _is_date_only(end):
+            end_dt = _end_of_day(end_dt)
     else:
         # ✅ Use naive UTC datetime
         end_dt = datetime.now(timezone.utc)
@@ -195,7 +230,10 @@ def _date_range(start: str | None, end: str | None):
 
 def _aware_date_range(start: str | None, end: str | None):
     if end:
-        end_dt = datetime.fromisoformat(end.strip())
+        end_raw = end.strip()
+        end_dt = datetime.fromisoformat(end_raw)
+        if _is_date_only(end_raw):
+            end_dt = _end_of_day(end_dt)
     else:
         end_dt = datetime.now(timezone.utc)
 
@@ -332,12 +370,80 @@ def admin_analytics_summary(db=Depends(get_db)):
     return analytics_summary(db)
 
 
-@admin_router.get("/v2/summary", response_model=AnalyticsSummaryOut)
+@admin_router.get("/insights", response_model=AnalyticsInsightsOut)
+def admin_analytics_insights(
+    view: str = Query(
+        ...,
+        description=(
+            "One of: summary, top, growth, demand, engagement-summary, action-throughput, "
+            "moderation-cycle-time, rbac-denials, moderation-kpi, events, actor-resource-graph, latency-error-surface"
+        ),
+    ),
+    content_type: str | None = None,
+    limit: int = Query(200, ge=1, le=1000),
+    start_date: str | None = None,
+    end_date: str | None = None,
+    module: str | None = None,
+    action: str | None = None,
+    result: str | None = None,
+    bucket_minutes: int = Query(30, ge=5, le=240),
+    db=Depends(get_db),
+):
+    view_key = (view or "").strip().lower()
+    start_naive, end_naive = _date_range(start_date, end_date)
+    start_aware, end_aware = _aware_date_range(start_date, end_date)
+
+    if view_key == "summary":
+        return AnalyticsInsightsOut(view=view_key, data=analytics_summary(db))
+    if view_key == "top":
+        return AnalyticsInsightsOut(
+            view=view_key,
+            data=get_top_content(db, content_type, min(limit, 100), start_naive, end_naive),
+        )
+    if view_key == "growth":
+        return AnalyticsInsightsOut(view=view_key, data=get_growth_trends(db, start_naive, end_naive))
+    if view_key == "demand":
+        return AnalyticsInsightsOut(view=view_key, data=get_demand_distribution(db))
+    if view_key == "engagement-summary":
+        return AnalyticsInsightsOut(view=view_key, data=get_engagement_summary(db, start_naive, end_naive))
+    if view_key == "action-throughput":
+        return AnalyticsInsightsOut(view=view_key, data=action_throughput(db, start_aware, end_aware))
+    if view_key == "moderation-cycle-time":
+        return AnalyticsInsightsOut(view=view_key, data=moderation_cycle_time_percentiles(db, start_aware, end_aware))
+    if view_key == "rbac-denials":
+        return AnalyticsInsightsOut(view=view_key, data=rbac_denials_by_role_path(db, start_aware, end_aware))
+    if view_key == "moderation-kpi":
+        return AnalyticsInsightsOut(view=view_key, data=analytics_summary(db))
+    if view_key == "events":
+        return AnalyticsInsightsOut(
+            view=view_key,
+            data=event_timeline(db, start_aware, end_aware, module=module, action=action, result=result, limit=limit),
+        )
+    if view_key == "actor-resource-graph":
+        return AnalyticsInsightsOut(
+            view=view_key,
+            data=admin_actor_resource_force_graph_v2(start_date=start_date, end_date=end_date, db=db),
+        )
+    if view_key == "latency-error-surface":
+        return AnalyticsInsightsOut(
+            view=view_key,
+            data=admin_latency_error_surface_v2(
+                start_date=start_date,
+                end_date=end_date,
+                bucket_minutes=bucket_minutes,
+                db=db,
+            ),
+        )
+
+    raise HTTPException(status_code=400, detail=f"Unsupported analytics insights view: {view}")
+
+
+@admin_router.get("/v2/summary", response_model=AnalyticsSummaryOut, include_in_schema=False)
 def admin_analytics_summary_v2(db=Depends(get_db)):
     return analytics_summary(db)
 
 
-@admin_router.get("/v2/top", response_model=List[TopContentItem])
+@admin_router.get("/v2/top", response_model=List[TopContentItem], include_in_schema=False)
 def admin_top_content_v2(
     content_type: str | None = None,
     limit: int = Query(20, ge=1, le=100),
@@ -352,7 +458,7 @@ def admin_top_content_v2(
         return []
 
 
-@admin_router.get("/v2/growth", response_model=GrowthSeries)
+@admin_router.get("/v2/growth", response_model=GrowthSeries, include_in_schema=False)
 def admin_growth_trends_v2(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -365,7 +471,7 @@ def admin_growth_trends_v2(
         return GrowthSeries(dates=[], series={})
 
 
-@admin_router.get("/v2/demand", response_model=Dict[str, DemandItem])
+@admin_router.get("/v2/demand", response_model=Dict[str, DemandItem], include_in_schema=False)
 def admin_demand_distribution_v2(db=Depends(get_db)):
     try:
         return get_demand_distribution(db)
@@ -373,7 +479,22 @@ def admin_demand_distribution_v2(db=Depends(get_db)):
         return {}
 
 
-@admin_router.get("/v2/action-throughput", response_model=List[ActionThroughputOut])
+@admin_router.get("/v2/engagement-summary", response_model=EngagementSummaryOut, include_in_schema=False)
+def admin_engagement_summary_v2(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    db=Depends(get_db),
+):
+    start = end = None
+    if start_date or end_date:
+        start, end = _date_range(start_date, end_date)
+    try:
+        return get_engagement_summary(db, start, end)
+    except SQLAlchemyError:
+        return EngagementSummaryOut()
+
+
+@admin_router.get("/v2/action-throughput", response_model=List[ActionThroughputOut], include_in_schema=False)
 def admin_action_throughput_v2(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -386,7 +507,7 @@ def admin_action_throughput_v2(
         return []
 
 
-@admin_router.get("/v2/moderation-cycle-time", response_model=ModerationLatencyOut)
+@admin_router.get("/v2/moderation-cycle-time", response_model=ModerationLatencyOut, include_in_schema=False)
 def admin_moderation_cycle_time_v2(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -408,7 +529,7 @@ def admin_moderation_cycle_time_v2(
         )
 
 
-@admin_router.get("/v2/rbac-denials", response_model=List[RbacDenialOut])
+@admin_router.get("/v2/rbac-denials", response_model=List[RbacDenialOut], include_in_schema=False)
 def admin_rbac_denials_v2(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -424,6 +545,7 @@ def admin_rbac_denials_v2(
 @admin_router.get(
     "/v2/moderation-kpi",
     response_model=AnalyticsSummaryOut,
+    include_in_schema=False,
     dependencies=[Depends(require_role(Role.MODERATOR))],
 )
 def admin_moderation_kpi_v2(db=Depends(get_db)):
@@ -435,7 +557,7 @@ def admin_moderation_kpi_v2(db=Depends(get_db)):
         return AnalyticsSummaryOut(today_approved=0, pending_review=0, total_approved=0)
 
 
-@admin_router.get("/v2/events", response_model=List[AdminEventTrailOut])
+@admin_router.get("/v2/events", response_model=List[AdminEventTrailOut], include_in_schema=False)
 def admin_event_trail_v2(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -452,7 +574,7 @@ def admin_event_trail_v2(
         return []
 
 
-@admin_router.get("/v2/3d/actor-resource-graph", response_model=ForceGraph3DOut)
+@admin_router.get("/v2/3d/actor-resource-graph", response_model=ForceGraph3DOut, include_in_schema=False)
 def admin_actor_resource_force_graph_v2(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -504,7 +626,7 @@ def admin_actor_resource_force_graph_v2(
     return ForceGraph3DOut(nodes=nodes, links=links)
 
 
-@admin_router.get("/v2/3d/latency-error-surface", response_model=List[SurfacePointOut])
+@admin_router.get("/v2/3d/latency-error-surface", response_model=List[SurfacePointOut], include_in_schema=False)
 def admin_latency_error_surface_v2(
     start_date: str | None = None,
     end_date: str | None = None,

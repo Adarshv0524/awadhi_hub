@@ -1,7 +1,19 @@
 // src/lib/api.ts
 export const API_BASE =
-  import.meta.env.PUBLIC_API_BASE ||
-  (import.meta.env.DEV ? "http://localhost:8000" : "");
+  (import.meta.env.PUBLIC_API_BASE ||
+    (import.meta.env.DEV ? "http://localhost:8000" : ""))
+    .replace(/\/$/, "")
+    .replace(/\/api\/v1$/, "");
+
+export const API_V1_PREFIX = "/api/v1";
+
+export function toApiV1Path(path: string): string {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  if (normalized === API_V1_PREFIX || normalized.startsWith(`${API_V1_PREFIX}/`)) {
+    return normalized;
+  }
+  return `${API_V1_PREFIX}${normalized}`;
+}
 
 if (!API_BASE) {
   console.warn(
@@ -52,7 +64,7 @@ async function refreshAccessToken(): Promise<string | null> {
   if (!refreshToken) return null;
 
   try {
-    const response = await fetch(`${API_BASE}/auth/refresh`, {
+    const response = await fetch(`${API_BASE}${toApiV1Path("/auth/refresh")}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refreshToken }),
@@ -113,11 +125,13 @@ export async function api<T = any>(
     ...(body ? { body: JSON.stringify(body) } : {}),
   };
 
+  const normalizedPath = toApiV1Path(path);
+
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}${path}`, fetchOptions);
+    response = await fetch(`${API_BASE}${normalizedPath}`, fetchOptions);
   } catch (networkError) {
-    const url = `${API_BASE}${path}`;
+    const url = `${API_BASE}${normalizedPath}`;
     const anyErr = networkError as any;
     const code: string | undefined = anyErr?.cause?.code ?? anyErr?.code;
     const key = `${code ?? "UNKNOWN"}|${API_BASE}`;
@@ -185,7 +199,7 @@ export async function api<T = any>(
               Authorization: `Bearer ${newToken}`,
             };
             
-            const retryResponse = await fetch(`${API_BASE}${path}`, {
+            const retryResponse = await fetch(`${API_BASE}${normalizedPath}`, {
               ...fetchOptions,
               headers: retryHeaders,
             });
@@ -209,7 +223,7 @@ export async function api<T = any>(
               };
               
               try {
-                const retryResponse = await fetch(`${API_BASE}${path}`, {
+                const retryResponse = await fetch(`${API_BASE}${normalizedPath}`, {
                   ...fetchOptions,
                   headers: retryHeaders,
                 });

@@ -84,6 +84,7 @@
       <label for="content-type" class="text-sm text-slate-400 font-medium">Content type</label>
       <select id="content-type" bind:value={contentType} on:change={() => load()} class="bg-slate-700 border border-slate-600 rounded px-3 py-2 text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-500">
         <option value="">All Types</option>
+        <option value="poetry">Poetry (all forms)</option>
         <option value="doha">Doha</option>
         <option value="dictionary">Dictionary</option>
         <option value="idiom">Idiom</option>
@@ -137,6 +138,8 @@
             <th class="px-4 py-3 text-slate-400 font-semibold text-right">Score</th>
             <th class="px-4 py-3 text-slate-400 font-semibold text-right">Views</th>
             <th class="px-4 py-3 text-slate-400 font-semibold text-right">Likes</th>
+            <th class="px-4 py-3 text-slate-400 font-semibold text-right">Bookmarks</th>
+            <th class="px-4 py-3 text-slate-400 font-semibold text-right">Shares</th>
             <th class="px-4 py-3 text-slate-400 font-semibold text-right">Searches</th>
           </tr>
         </thead>
@@ -159,6 +162,8 @@
               </td>
               <td class="px-4 py-3 text-right text-slate-300">{item.views?.toLocaleString() ?? "—"}</td>
               <td class="px-4 py-3 text-right text-slate-300 font-medium">{(item.likes ?? item.likes_count)?.toLocaleString() ?? "—"}</td>
+              <td class="px-4 py-3 text-right text-slate-300 font-medium">{(item.bookmarks ?? item.bookmarks_count)?.toLocaleString() ?? "—"}</td>
+              <td class="px-4 py-3 text-right text-slate-300 font-medium">{(item.shares ?? item.shares_count)?.toLocaleString() ?? "—"}</td>
               <td class="px-4 py-3 text-right text-slate-300 font-medium">{item.search_hits?.toLocaleString() ?? "—"}</td>
             </tr>
           {/each}

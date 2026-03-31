@@ -6,6 +6,8 @@ import { api, ApiError } from "../../lib/api";
 import StructuredData from "../../components/StructuredData.astro";
 import NavigationControls from "../../components/navigation/NavigationControls.svelte";
 import VerseDetailCard from "../../components/content/poetry/VerseDetailCard.astro";
+import InteractionBar from "../../components/interaction/InteractionBar.svelte";
+import Recommendations from "../../components/recommendations/Recommendations.svelte";
 
 const { id } = Astro.params;
 
@@ -87,7 +89,7 @@ const poetryKeywords = [
     )}
   </head>
 
-  <div class="mx-auto max-w-4xl px-4 py-8">
+  <div class="mx-auto max-w-5xl px-4 py-8">
     {error && (
       <div class="rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>
     )}
@@ -114,15 +116,64 @@ const poetryKeywords = [
           nextText={next ? `${next.poetry_type} #${next.sequence_no}` : undefined}
         />
 
-        <VerseDetailCard
-          node={node}
-          chapterId={hierarchy.chapter.id}
-          badgeLabel={node.poetry_type}
-          sequenceLabel={node.sequence_no}
-        />
+        <div class="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+          <div class="space-y-5">
+            <VerseDetailCard
+              node={node}
+              chapterId={hierarchy.chapter.id}
+              badgeLabel={node.poetry_type}
+              sequenceLabel={node.sequence_no}
+            />
 
-        <div class="flex justify-center">
-          <a class="text-sm text-slate-300 hover:text-slate-100" href={chapterHref}>Back to chapter</a>
+            <section class="rounded-xl border border-slate-700 bg-slate-900/55 p-4 md:p-5">
+              <h2 class="mb-3 text-base font-semibold text-slate-100">Engagement</h2>
+              <InteractionBar
+                client:only="svelte"
+                contentType={node.poetry_type || "poetry_node"}
+                contentId={node.id}
+                content={node}
+                likes={node?.likes_count ?? 0}
+                views={node?.views_count ?? 0}
+                bookmarks={node?.bookmarks_count ?? 0}
+                shares={node?.shares_count ?? 0}
+              />
+            </section>
+
+            <section class="rounded-xl border border-slate-700 bg-slate-900/55 p-4 md:p-5">
+              <h2 class="mb-2 text-base font-semibold text-slate-100">Related Content</h2>
+              <p class="mb-3 text-sm text-slate-400">Discover nearby verses and conceptually linked entries.</p>
+              <Recommendations content_type={node.poetry_type || "doha"} content_id={node.id} limit={6} client:visible />
+            </section>
+          </div>
+
+          <aside class="space-y-4 rounded-xl border border-slate-700 bg-slate-900/55 p-4 md:p-5 h-max">
+            <h2 class="text-base font-semibold text-slate-100">Verse Context</h2>
+            <div class="space-y-3 text-sm text-slate-300">
+              <div>
+                <p class="text-xs uppercase tracking-wide text-slate-500">Form</p>
+                <p class="font-medium text-slate-100">{node.poetry_type}</p>
+              </div>
+              <div>
+                <p class="text-xs uppercase tracking-wide text-slate-500">Sequence</p>
+                <p class="font-medium text-slate-100">#{node.sequence_no}</p>
+              </div>
+              <div>
+                <p class="text-xs uppercase tracking-wide text-slate-500">Author</p>
+                <a class="font-medium text-cyan-300 hover:text-cyan-200" href={`/${encodeURIComponent(hierarchy.author.slug)}`}>{hierarchy.author.name}</a>
+              </div>
+              <div>
+                <p class="text-xs uppercase tracking-wide text-slate-500">Work</p>
+                <a class="font-medium text-cyan-300 hover:text-cyan-200" href={`/${encodeURIComponent(hierarchy.author.slug)}/${encodeURIComponent(hierarchy.work.slug)}`}>{hierarchy.work.title}</a>
+              </div>
+              <div>
+                <p class="text-xs uppercase tracking-wide text-slate-500">Chapter</p>
+                <a class="font-medium text-cyan-300 hover:text-cyan-200" href={chapterHref}>{hierarchy.chapter.title}</a>
+              </div>
+            </div>
+            <div class="pt-1">
+              <a class="inline-flex items-center text-sm text-slate-300 hover:text-slate-100" href={chapterHref}>Back to chapter</a>
+            </div>
+          </aside>
         </div>
       </article>
     )}

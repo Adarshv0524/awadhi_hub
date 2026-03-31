@@ -12,15 +12,15 @@ const author = url.searchParams.get("author") || "";
 const work = url.searchParams.get("work") || "";
 const poetryType = url.searchParams.get("poetry_type") || "all";
 
-const allowedType = new Set(["all", "poetry", "doha", "dictionary", "idiom", "article"]);
+const allowedType = new Set(["all", "poetry", "dictionary", "idiom", "article"]);
 const allowedSort = new Set(["relevance", "recent"]);
-const safeType = (allowedType.has(contentFilter) ? contentFilter : "all") as "all" | "poetry" | "doha" | "dictionary" | "idiom" | "article";
+const safeType = (allowedType.has(contentFilter) ? contentFilter : "all") as "all" | "poetry" | "dictionary" | "idiom" | "article";
 const safeSort = (allowedSort.has(sort) ? sort : "relevance") as "relevance" | "recent";
 ---
 
 <BaseLayout
   title={q ? `Search: ${q}` : "Search"}
-  description="Search across Awadhi dohas, dictionary entries, idioms, and articles with filters for content type, author, and relevance."
+  description="Search across Awadhi poetry, dictionary entries, idioms, and articles with filters for content type, author, and relevance."
 >
   <SearchExperience
     client:load

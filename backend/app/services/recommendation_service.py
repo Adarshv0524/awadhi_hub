@@ -9,6 +9,7 @@ from app.db.models import (
     DictionaryEntry,
     IdiomEntry,
     ArticleEntry,
+    PoetryNode,
     EngagementKPI,
     SystemSetting,
 )
@@ -113,6 +114,16 @@ def get_recommendations(
         ).first()
         tokens = _extract_tokens(source.text_romanized if source else None)
 
+    else:
+        source = db.query(PoetryNode).filter(
+            PoetryNode.id == content_id,
+            PoetryNode.poetry_type == content_type,
+            PoetryNode.visibility == "public",
+            PoetryNode.status == "active",
+            PoetryNode.is_deleted == False,
+        ).first()
+        tokens = _extract_tokens((source.text_romanized or source.main_text) if source else None)
+
     if not source or not tokens:
         return []
 
@@ -173,6 +184,21 @@ def get_recommendations(
             .limit(DB_CANDIDATE_CAP)
         )
         candidates = [("article", x) for x in q]
+
+    else:
+        q = (
+            db.query(PoetryNode)
+            .filter(
+                PoetryNode.poetry_type == content_type,
+                PoetryNode.visibility == "public",
+                PoetryNode.status == "active",
+                PoetryNode.is_deleted == False,
+                PoetryNode.id != content_id,
+                _or_like(PoetryNode.main_text),
+            )
+            .limit(DB_CANDIDATE_CAP)
+        )
+        candidates = [(content_type, x) for x in q]
 
     if not candidates:
         return []

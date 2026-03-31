@@ -33,10 +33,12 @@
   }
 
   const metricColors: Record<string, string> = {
+    poetry: "#6fb5ff",
     doha: "#7aa6d8",
     dictionary: "#8eb7c3",
     idiom: "#9aa6c7",
     article: "#b59db8",
+    engagement_activity: "#f59e0b",
     users: "#89b5a0",
   };
 
@@ -140,7 +142,7 @@
                 <div class="w-4 h-4 rounded-full shadow-lg" style="background-color: {color}"></div>
                 <div>
                   <h3 class="font-semibold text-slate-200 capitalize text-lg">{metric}</h3>
-                  <p class="text-xs text-slate-500 mt-1">Daily submissions over time</p>
+                  <p class="text-xs text-slate-500 mt-1">Daily growth/activity trend</p>
                 </div>
               </div>
               <div class="text-right">

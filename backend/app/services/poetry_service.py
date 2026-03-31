@@ -4,7 +4,8 @@ from fastapi import HTTPException
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.db.models import ClassicalAuthor, ClassicalWork, PoetryNode, PoetryTypeRegistry, WorkChapter
+from app.db.models import ClassicalAuthor, ClassicalWork, EngagementKPI, PoetryNode, PoetryTypeRegistry, WorkChapter
+from app.services.engagement_service import record_search_hits, record_view
 from app.schemas.poetry import PoetryTypeOut
 
 
@@ -55,7 +56,27 @@ def _serialize_nav_summary(node: Optional[PoetryNode]) -> Optional[dict]:
     }
 
 
-def _serialize_current(node: PoetryNode) -> dict:
+def _serialize_current(db: Session, node: PoetryNode) -> dict:
+    kpi = None
+    # Support legacy KPI rows that used "poetry_node" plus poetry-type keyed rows.
+    kpi_rows = (
+        db.query(EngagementKPI)
+        .filter(
+            EngagementKPI.content_id == node.id,
+            EngagementKPI.content_type.in_([node.poetry_type, "poetry_node"]),
+        )
+        .all()
+    )
+    if kpi_rows:
+        kpi = {
+            "views_count": sum(int(r.views_count or 0) for r in kpi_rows),
+            "likes_count": sum(int(r.likes_count or 0) for r in kpi_rows),
+            "shares_count": sum(int(r.shares_count or 0) for r in kpi_rows),
+            "bookmarks_count": sum(int(r.bookmarks_count or 0) for r in kpi_rows),
+            "search_hits_count": sum(int(r.search_hits_count or 0) for r in kpi_rows),
+            "weight_score": float(sum(float(r.weight_score or 0.0) for r in kpi_rows)),
+        }
+
     return {
         "id": node.id,
         "poetry_type": node.poetry_type,
@@ -65,6 +86,12 @@ def _serialize_current(node: PoetryNode) -> dict:
         "text_romanized": node.text_romanized,
         "meaning": node.meaning,
         "prosody_metadata": node.prosody_metadata,
+        "views_count": (kpi or {}).get("views_count", 0),
+        "likes_count": (kpi or {}).get("likes_count", 0),
+        "shares_count": (kpi or {}).get("shares_count", 0),
+        "bookmarks_count": (kpi or {}).get("bookmarks_count", 0),
+        "search_hits_count": (kpi or {}).get("search_hits_count", 0),
+        "weight_score": (kpi or {}).get("weight_score", 0.0),
     }
 
 
@@ -90,6 +117,12 @@ def get_poetry_stream(db: Session, chapter_id: int, offset: int, limit: int = 10
         .limit(bounded_limit)
         .all()
     )
+
+    # Track reads as view events for engagement analytics.
+    if rows:
+        for row in rows:
+            record_view(db, row.poetry_type, int(row.id))
+        db.commit()
 
     hierarchy = None
     if rows:
@@ -125,7 +158,7 @@ def get_poetry_stream(db: Session, chapter_id: int, offset: int, limit: int = 10
         "total": total,
         "offset": offset,
         "limit": bounded_limit,
-        "items": [_serialize_current(row) for row in rows],
+        "items": [_serialize_current(db, row) for row in rows],
     }
 
 
@@ -140,6 +173,9 @@ def get_poetry_nav(db: Session, chapter_id: int, sequence_no: int) -> dict:
     if not current:
         raise HTTPException(status_code=404, detail="Poetry node not found at requested chapter sequence")
 
+    record_view(db, current.poetry_type, int(current.id))
+    db.commit()
+
     previous = (
         chapter_scope.filter(PoetryNode.sequence_no < sequence_no)
         .order_by(PoetryNode.sequence_no.desc(), PoetryNode.id.desc())
@@ -153,7 +189,7 @@ def get_poetry_nav(db: Session, chapter_id: int, sequence_no: int) -> dict:
 
     return {
         "hierarchy": _serialize_hierarchy(current),
-        "current": _serialize_current(current),
+        "current": _serialize_current(db, current),
         "previous": _serialize_nav_summary(previous),
         "next": _serialize_nav_summary(next_item),
     }
@@ -167,6 +203,9 @@ def get_poetry_node(db: Session, poetry_node_id: int) -> dict:
     )
     if not row:
         raise HTTPException(status_code=404, detail="Poetry node not found")
+
+    record_view(db, row.poetry_type, int(row.id))
+    db.commit()
 
     chapter_scope = _active_poetry_query(db).filter(PoetryNode.chapter_id == row.chapter_id)
     previous = (
@@ -182,7 +221,7 @@ def get_poetry_node(db: Session, poetry_node_id: int) -> dict:
 
     return {
         "hierarchy": _serialize_hierarchy(row),
-        "current": _serialize_current(row),
+        "current": _serialize_current(db, row),
         "previous": _serialize_nav_summary(previous),
         "next": _serialize_nav_summary(next_item),
     }
@@ -303,5 +342,12 @@ def search_poetry(
                 "relevance_score": 1.0,
             }
         )
+
+    if rows:
+        by_type: dict[str, list[int]] = {}
+        for node, *_ in rows:
+            by_type.setdefault(node.poetry_type, []).append(int(node.id))
+        for ctype, ids in by_type.items():
+            record_search_hits(db, ctype, ids, increment=1)
 
     return {"total": total, "results": results}

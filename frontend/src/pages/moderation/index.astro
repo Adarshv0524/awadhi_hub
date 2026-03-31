@@ -10,11 +10,10 @@ export const prerender = false;
   <head>
     <meta name="robots" content="noindex,nofollow" />
   </head>
-  <div class="max-w-6xl mx-auto py-6">
+  <div class="max-w-7xl mx-auto py-6">
     <div class="mb-5">
       <SummaryKpiCards title="Moderation KPI Snapshot" client:load />
     </div>
-    <h1 class="text-2xl font-serif mb-4">Moderation Queue</h1>
     <!-- client:load ensures the Svelte component runs in the browser (needs auth token) -->
     <ModerationQueue client:load />
   </div>

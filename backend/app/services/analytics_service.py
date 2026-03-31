@@ -13,6 +13,7 @@ from app.db.models import (
     DictionaryEntry,
     IdiomEntry,
     ArticleEntry,
+    PoetryNode,
     User,
 )
 
@@ -26,6 +27,8 @@ CONTENT_TABLES = {
     "idiom": IdiomEntry,
     "article": ArticleEntry,
 }
+
+NON_POETRY_TYPES = {"dictionary", "idiom", "article"}
 
 
 def _log_score(v: int, s: int, l: int) -> float:
@@ -64,6 +67,8 @@ def get_top_content(
             EngagementKPI.views_count,
             EngagementKPI.search_hits_count,
             EngagementKPI.likes_count,
+            EngagementKPI.bookmarks_count,
+            EngagementKPI.shares_count,
         )
         .filter(
             EngagementKPI.updated_at >= start_date,
@@ -72,7 +77,11 @@ def get_top_content(
     )
 
     if content_type:
-        q = q.filter(EngagementKPI.content_type == content_type)
+        normalized = content_type.strip().lower()
+        if normalized == "poetry":
+            q = q.filter(~EngagementKPI.content_type.in_(list(NON_POETRY_TYPES)))
+        else:
+            q = q.filter(func.lower(EngagementKPI.content_type) == normalized)
 
     raw = q.all()
 
@@ -84,6 +93,8 @@ def get_top_content(
             "content_id": r.content_id,
             "views": r.views_count,
             "likes": r.likes_count,
+            "bookmarks": r.bookmarks_count,
+            "shares": r.shares_count,
             "search_hits": r.search_hits_count,
             "score": round(score_val, 4)
         })
@@ -126,11 +137,75 @@ def get_top_content(
         ).all()
         previews.update({r.id: r.title or "[no title]" for r in rows})
 
+    poetry_like_ids: list[int] = []
+    for ctype, ids in by_type.items():
+        if ctype not in NON_POETRY_TYPES and ctype != "doha":
+            poetry_like_ids.extend(ids)
+
+    if poetry_like_ids:
+        rows = db.query(PoetryNode.id, PoetryNode.main_text).filter(
+            PoetryNode.id.in_(poetry_like_ids),
+            PoetryNode.is_deleted == False,
+            PoetryNode.status == "active",
+            PoetryNode.visibility == "public",
+        ).all()
+        previews.update({r.id: (r.main_text or "[no text]")[:100] for r in rows})
+
     # ---- attach preview ----
     for r in top:
         r["title_or_text"] = previews.get(r["content_id"], "[deleted or private]")
 
     return top
+
+
+def get_engagement_summary(
+    db: Session,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> Dict[str, Any]:
+    q = db.query(EngagementKPI)
+
+    if start_date is not None:
+        if start_date.tzinfo is not None:
+            start_date = start_date.replace(tzinfo=None)
+        q = q.filter(EngagementKPI.updated_at >= start_date)
+    if end_date is not None:
+        if end_date.tzinfo is not None:
+            end_date = end_date.replace(tzinfo=None)
+        q = q.filter(EngagementKPI.updated_at <= end_date)
+
+    row = q.with_entities(
+        func.coalesce(func.sum(EngagementKPI.views_count), 0),
+        func.coalesce(func.sum(EngagementKPI.likes_count), 0),
+        func.coalesce(func.sum(EngagementKPI.bookmarks_count), 0),
+        func.coalesce(func.sum(EngagementKPI.shares_count), 0),
+        func.coalesce(func.sum(EngagementKPI.search_hits_count), 0),
+        func.count(EngagementKPI.id),
+    ).first()
+
+    top_kpi = (
+        q.order_by(EngagementKPI.weight_score.desc(), EngagementKPI.updated_at.desc())
+        .first()
+    )
+
+    top = None
+    if top_kpi is not None:
+        top = {
+            "content_type": str(top_kpi.content_type),
+            "content_id": int(top_kpi.content_id),
+            "score": float(top_kpi.weight_score or 0.0),
+            "title_or_text": f"{top_kpi.content_type} #{top_kpi.content_id}",
+        }
+
+    return {
+        "total_views": int(row[0] or 0),
+        "total_likes": int(row[1] or 0),
+        "total_bookmarks": int(row[2] or 0),
+        "total_shares": int(row[3] or 0),
+        "total_search_hits": int(row[4] or 0),
+        "active_content": int(row[5] or 0),
+        "top_performer": top,
+    }
 
 
 # =====================================================
@@ -157,7 +232,7 @@ def get_growth_trends(
 
     series = {}
 
-    # --- Content growth ---
+    # --- Legacy + non-poetry content growth ---
     for ctype, model in CONTENT_TABLES.items():
         q = db.query(
             func.date(model.created_at).label("day"),
@@ -175,6 +250,37 @@ def get_growth_trends(
 
         counts = {str(r[0]): r[1] for r in q.all()}
         series[ctype] = [counts.get(d, 0) for d in dates]
+
+    # --- Poetry node growth (canonical poetry-first model) ---
+    poetry_q = (
+        db.query(
+            func.date(PoetryNode.created_at).label("day"),
+            func.count(PoetryNode.id),
+        )
+        .filter(
+            PoetryNode.created_at >= start_date,
+            PoetryNode.created_at <= end_date,
+            PoetryNode.is_deleted == False,
+        )
+        .group_by("day")
+    )
+    poetry_counts = {str(r[0]): r[1] for r in poetry_q.all()}
+    series["poetry"] = [poetry_counts.get(d, 0) for d in dates]
+
+    # --- Engagement activity (reflects daily content interactions/reads updates) ---
+    activity_q = (
+        db.query(
+            func.date(EngagementKPI.updated_at).label("day"),
+            func.count(EngagementKPI.id),
+        )
+        .filter(
+            EngagementKPI.updated_at >= start_date,
+            EngagementKPI.updated_at <= end_date,
+        )
+        .group_by("day")
+    )
+    activity_counts = {str(r[0]): r[1] for r in activity_q.all()}
+    series["engagement_activity"] = [activity_counts.get(d, 0) for d in dates]
 
     # --- User registrations ---
     uq = (

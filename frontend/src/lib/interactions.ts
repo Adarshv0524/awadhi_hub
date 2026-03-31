@@ -14,9 +14,10 @@ export async function toggleInteraction(
   content_id: number,
   interaction: InteractionType
 ) {
-  return api("/interactions/toggle", {
+  return api("/interactions/master", {
     method: "POST",
     body: {
+      action: "toggle",
       content_type,
       content_id,
       interaction,
@@ -38,9 +39,10 @@ export async function shareContent(
   content_id: number,
   channel: string
 ) {
-  return api("/interactions/share", {
+  return api("/interactions/master", {
     method: "POST",
     body: {
+      action: "share",
       content_type,
       content_id,
       metadata: { 
@@ -62,9 +64,10 @@ export async function reportContent(
   reason: string,
   note?: string
 ) {
-  return api("/interactions/report", {
+  return api("/interactions/master", {
     method: "POST",
     body: {
+      action: "report",
       content_type,
       content_id,
       reason,
@@ -85,9 +88,15 @@ export async function getUserBookmarks(
   limit = 20,
   offset = 0
 ) {
-  return api(
-    `/interactions/users/${userId}/bookmarks?limit=${limit}&offset=${offset}`
-  );
+  return api("/interactions/master", {
+    method: "POST",
+    body: {
+      action: "list_bookmarks",
+      user_id: userId,
+      limit,
+      offset,
+    },
+  });
 }
 
 /**
@@ -99,7 +108,13 @@ export async function getUserLikes(
   limit = 20,
   offset = 0
 ) {
-  return api(
-    `/interactions/users/${userId}/likes?limit=${limit}&offset=${offset}`
-  );
+  return api("/interactions/master", {
+    method: "POST",
+    body: {
+      action: "list_likes",
+      user_id: userId,
+      limit,
+      offset,
+    },
+  });
 }
